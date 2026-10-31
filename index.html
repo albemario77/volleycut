@@ -73,8 +73,9 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
     <video id="v" controls preload="metadata"></video>
     <div id="side">
       <h1>Revisione rally &mdash; <span id="vname"></span></h1>
-      <div class="row" id="vmsg" hidden><b style="color:var(--dub)">Scegli il video della partita</b>
-        <span class="mut">(anche la copia ridotta <code>lavoro/proxy.mp4</code>: ha gli stessi tempi ed e' molto piu' leggera)</span></div>
+      <div class="row" id="vmsg" hidden><button class="pri" id="vpick">Scegli il video della partita&hellip;</button>
+        <span class="mut">Dal web il video non si carica da solo: scegli <code>video/&hellip;mp4</code> oppure la copia ridotta
+        <code>lavoro/proxy.mp4</code> (stessi tempi, molto piu' leggera).</span></div>
       <div class="row">
         <label><input type="checkbox" id="preview"> Anteprima senza tagli (salta i tempi morti)</label>
       </div>
@@ -583,6 +584,7 @@ if (D.empty) needVideo();
 v.addEventListener("error", needVideo);
 v.addEventListener("loadedmetadata", () => { $("vmsg").hidden = true; });
 $("pick").onclick = () => $("file").click();
+$("vpick").onclick = () => $("file").click();
 $("file").onchange = e => { const f = e.target.files[0]; if (f) v.src = URL.createObjectURL(f); };
 const seek = t => { v.currentTime = clamp(t, 0, DUR); };
 

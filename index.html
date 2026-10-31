@@ -1,0 +1,1150 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>volley_cut - revisione</title>
+<style>
+:root{--bg:#fafaf7;--fg:#1d1d1b;--mut:#6b6b66;--card:#fff;--line:#d9d8d0;--ok:#2e8b3d;--dub:#e08a00;--off:#9a9a94;--acc:#1f6feb;--whi:#e6b800;--mov:#4a78b8}
+@media (prefers-color-scheme:dark){:root{--bg:#161614;--fg:#eceae3;--mut:#9b9a92;--card:#201f1d;--line:#3a3935;--ok:#4cb85c;--dub:#f0a020;--off:#6f6f69;--acc:#5b9bff;--whi:#f2c94c;--mov:#7aa2d6}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,Segoe UI,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+#top{flex:none;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 16px}
+#vwrap{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+video{max-height:26vh;max-width:100%;background:#000;border-radius:6px}
+#side{flex:1;min-width:240px}
+h1{font-size:15px;margin:0 0 6px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+button{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
+button:hover{border-color:var(--acc)}
+button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+button.sm{padding:1px 6px}
+.mut{color:var(--mut)}
+canvas{display:block;width:100%;border:1px solid var(--line);border-radius:6px;background:var(--card);margin-top:8px}
+#main{height:110px;cursor:crosshair}
+#over{height:30px;cursor:pointer}
+#list{flex:1;min-height:0;overflow:auto;padding:0 16px 80px}
+#rows tr{scroll-margin-top:90px}
+table{border-collapse:collapse;width:100%}
+th,td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+thead{position:sticky;top:0;z-index:3;background:var(--bg)}
+#toolbar{margin:0}
+#bar{border-bottom:0;padding:8px 0 2px}
+th{background:var(--bg);color:var(--mut);font-weight:600;border-bottom:2px solid var(--line)}
+tr.sel{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+tr.off td{color:var(--mut)}
+tr.off .nm{text-decoration:line-through}
+.pill{font-size:12px;border-radius:10px;padding:1px 8px;border:1px solid var(--line)}
+.pill.d{border-color:var(--dub);color:var(--dub)}
+input[type=text]{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:2px 6px;width:130px}
+.legend span{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 10px;vertical-align:baseline}
+dialog{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:10px;max-width:640px;width:92vw}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+dialog h2{font-size:16px;margin:0 0 8px}
+td.sc{white-space:nowrap}td.sc input{width:3.6em}td.sc.dup input{outline:2px solid #d33}
+.sus{color:var(--dub)}.ci .sc{color:var(--mut)}
+.stab{border-collapse:collapse;margin:6px 0}.stab th,.stab td{padding:3px 12px;text-align:right;border-bottom:1px solid var(--line)}
+.bad{color:#d33}.good{color:var(--ok)}
+dialog label{display:block;margin:4px 0}
+textarea{width:100%;font:12px/1.4 Consolas,monospace;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px}
+#cine{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 360px;background:var(--bg)}
+#cine[hidden]{display:none}
+#cstage{display:flex;flex-direction:column;min-height:0;padding:10px 16px;gap:6px}
+#cvid{flex:1;min-height:0;background:#000;border-radius:6px;display:flex}
+#cvid video{width:100%;height:100%;max-height:none;object-fit:contain;cursor:pointer;border-radius:6px}
+#cpanel{border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;padding:8px}
+#cpanel #scflt{gap:6px}#cpanel #scflt select{flex:1 1 45%;min-width:0}#cpanel #scflt>.mut:first-child{flex:1 0 100%}
+#clist{overflow:auto;flex:1;margin-top:6px}
+.ci{display:flex;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap}
+.ci:hover{background:color-mix(in srgb,var(--acc) 8%,transparent)}
+.ci.on{background:color-mix(in srgb,var(--acc) 20%,transparent);outline:1px solid var(--acc)}
+.ci.off .t{color:var(--mut);text-decoration:line-through}
+.ci .tg{flex:1;overflow:hidden;text-overflow:ellipsis;color:var(--acc)}
+.ci .n{min-width:28px;color:var(--mut)}
+body.cine #top,body.cine #list{display:none}
+@media (max-width:900px){#cine{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) 240px}#cpanel{border-left:0;border-top:1px solid var(--line)}}
+kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(--card);font-size:12px}
+</style>
+</head>
+<body>
+<div id="top">
+  <div id="vwrap">
+    <video id="v" controls preload="metadata"></video>
+    <div id="side">
+      <h1>Revisione rally &mdash; <span id="vname"></span></h1>
+      <div class="row" id="vmsg" hidden><b style="color:var(--dub)">Scegli il video della partita</b>
+        <span class="mut">(anche la copia ridotta <code>lavoro/proxy.mp4</code>: ha gli stessi tempi ed e' molto piu' leggera)</span></div>
+      <div class="row">
+        <label><input type="checkbox" id="preview"> Anteprima senza tagli (salta i tempi morti)</label>
+      </div>
+      <div class="row" id="stats"></div>
+      <div class="row">
+        <button class="pri" id="save" title="Salva il lavoro in un file partita.json (Ctrl+S)">Salva</button>
+        <button id="saveas" title="Salva con un altro nome o in un'altra cartella">Salva come&hellip;</button>
+        <button id="open" title="Riprendi il lavoro da un file salvato">Apri&hellip;</button>
+        <input type="file" id="jfile" accept=".json,application/json" hidden>
+        <button id="pick">Scegli il video&hellip;</button>
+        <input type="file" id="file" accept="video/*" hidden>
+        <button id="reset" title="Torna alla proposta automatica">Ripristina originale</button>
+        <button id="gocine" title="Video grande con l'elenco delle clip a destra">Vista cinema</button>
+        <button id="scout" title="Carica lo scout (file .xlsx esportato da Volley Coach) e controllalo">Carica scout&hellip;</button>
+        <input type="file" id="sfile" accept=".xlsx" hidden>
+      </div>
+      <div class="row mut" id="status"></div>
+      <details class="mut" id="help"><summary>Scorciatoie e aiuto</summary>
+        <kbd>spazio</kbd> play/pausa &middot; <kbd>&larr;</kbd><kbd>&rarr;</kbd> &plusmn;5 s (con <kbd>maiusc</kbd> &plusmn;1 s) &middot;
+        <kbd>N</kbd>/<kbd>P</kbd> rally successivo/precedente &middot; <kbd>X</kbd> tieni/scarta &middot; <kbd>S</kbd> aggiungi alla selezione per il minivideo &middot;
+        <kbd>[</kbd> <kbd>]</kbd> inizio/fine = istante attuale. Timeline: trascina i bordi di un rally,
+        doppio clic su un punto vuoto per aggiungerne uno, rotella per lo zoom, trascina per spostarti.
+      </details>
+      <div class="legend mut"><span style="background:var(--ok)"></span>tieni<span style="background:var(--dub)"></span>dubbio<span style="background:var(--off)"></span>scartato<span style="background:var(--whi)"></span>fischi<span style="background:var(--mov)"></span>movimento</div>
+    </div>
+  </div>
+  <canvas id="main"></canvas>
+  <canvas id="over"></canvas>
+</div>
+<div id="list">
+  <table>
+    <thead><tr><td colspan="12" id="bar">
+  <div class="row" id="toolbar">
+    <label><input type="checkbox" id="onlyd"> mostra solo i dubbi</label>
+    <span class="mut">&middot; Selezione:</span>
+    <button class="sm" id="selall">tutte le visibili</button>
+    <button class="sm" id="selkeep" title="Seleziona tutte le clip con Tieni spuntato (tra quelle visibili)">tutte con "Tieni"</button>
+    <button class="sm" id="selnone">nessuna</button>
+    <select id="seltag" title="Aggiunge alla selezione tutte le clip con quell'etichetta"><option value="">per etichetta&hellip;</option></select>
+    <span class="mut" id="selinfo"></span>
+    <button class="pri" id="mini" disabled>Crea minivideo&hellip;</button>
+  </div>
+  <div class="row" id="scbar" hidden>
+    <b>Scout</b> <span id="scinfo" class="mut"></span>
+    <button class="sm" id="scauto" title="Rifa' l'abbinamento: la k-esima clip con Tieni e' il k-esimo punto dello scout">Abbina in ordine</button>
+    <span class="mut">Dalla clip selezionata:</span>
+    <button class="sm" id="scskip" title="Un punto dello scout non ha clip: questa clip e le successive passano al punto seguente">salta un punto</button>
+    <button class="sm" id="scnot" title="Questa clip non e' un rally dello scout: la scollega e anticipa le successive">non e' un punto</button>
+    <button class="sm" id="scdet" title="Scollega solo questa clip">scollega</button>
+    <button class="sm" id="screp">Rapporto&hellip;</button>
+  </div>
+  <div class="row" id="scflt" hidden>
+    <span class="mut">Filtra le clip per scout:</span>
+    <select id="fset" title="Set"></select>
+    <select id="fplayer" title="Giocatore: clip in cui ha toccato la palla"></select>
+    <select id="fskill" title="Fondamentale"></select>
+    <select id="fgrade" title="Voto del tocco"></select>
+    <select id="fwon" title="Chi ha segnato il punto"></select>
+    <button class="sm" id="fclear">azzera</button>
+    <span class="mut" id="fcount"></span>
+    <button class="sm" id="ftag" title="Scrive nelle etichette set, punteggio e chi ha segnato">Etichetta dallo scout&hellip;</button>
+  </div>
+    </td></tr><tr><th>#</th><th title="Clip scelte per un minivideo">Sel.</th><th>Inizio</th><th>Fine</th><th>Durata</th><th>Stato</th><th title="Punto dello scout abbinato">Scout</th><th>Tieni</th><th>Etichetta</th><th>Modifica inizio</th><th>Modifica fine</th><th></th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+<div id="cine" hidden>
+  <div id="cstage">
+    <div id="cvid"></div>
+    <div id="cbar">
+      <div class="row">
+        <button id="cprev" title="Clip precedente (P)">&#9198;</button>
+        <button id="cplay" class="pri" title="Play/pausa (spazio)">&#9654;</button>
+        <button id="cnext" title="Clip successiva (N)">&#9197;</button>
+        <input type="range" id="cseek" min="0" max="1000" value="0" style="flex:1">
+        <span id="ctime" class="mut"></span>
+      </div>
+      <div class="row">
+        <b id="ctitle"></b>
+        <label>Etichetta <input type="text" list="tags" id="ctag"></label>
+        <label><input type="checkbox" id="ckeep"> Tieni</label>
+        <label><input type="checkbox" id="csel"> Sel.</label>
+        <select id="cspeed"><option value="0.25">0,25x</option><option value="0.5">0,5x</option><option value="1" selected>1x</option><option value="1.5">1,5x</option><option value="2">2x</option></select>
+        <label><input type="checkbox" id="cauto" checked> avanti automatico</label>
+        <button id="cfs">Schermo intero</button>
+        <button id="cback">Torna alla revisione</button>
+      </div>
+    </div>
+  </div>
+  <aside id="cpanel">
+    <div class="row"><select id="cfilter"></select><span id="ccount" class="mut"></span></div>
+    <div id="clist"></div>
+  </aside>
+</div>
+<dialog id="dlg">
+  <h2>Minivideo dalla selezione</h2>
+  <p id="dsum" class="mut"></p>
+  <label>Nome del video: <input type="text" id="dname" value="minivideo"></label>
+  <label><input type="radio" name="dm" value="fast" checked> veloce: copia diretta, pochi secondi (la clip puo' iniziare fino a ~1 s prima, a seconda dei fotogrammi chiave del video)</label>
+  <label><input type="radio" name="dm" value="precise"> precisa: ricodifica, tagli esatti al fotogramma ma molto piu' lenta (circa 0,4 s per ogni secondo di video)</label>
+  <div class="row"><button class="pri" id="dmake">Scarica i file</button><button id="dcopy">Copia il comando</button><button id="dclose">Chiudi</button></div>
+  <p class="mut">Vengono scaricati <b>nome.json</b> (la selezione) e <b>nome.bat</b>. Mettili nella stessa cartella e
+    fai doppio clic su nome.bat: il minivideo compare in export/minivideo/<nome>/ nella cartella della partita. Il video principale non viene toccato.</p>
+  <textarea readonly id="dcmd" rows="4"></textarea>
+</dialog>
+<dialog id="sdlg">
+  <h2>Scout caricato</h2>
+  <div id="sbody"></div>
+  <div class="row"><button class="pri" id="sclose">Chiudi</button></div>
+</dialog>
+<dialog id="tdlg">
+  <h2>Etichette dallo scout</h2>
+  <p class="mut">Scrive l'etichetta nelle clip abbinate a un punto. L'etichetta entra nel nome del file e nei filtri della selezione.</p>
+  <label><input type="checkbox" id="tset" checked> set e punteggio (es. S2_15-12)</label>
+  <label><input type="checkbox" id="twin" checked> chi ha segnato (pt-locali / pt-ospiti)</label>
+  <label><input type="checkbox" id="tover"> sostituisci anche le etichette gia' scritte</label>
+  <p id="tprev" class="mut"></p>
+  <div class="row"><button class="pri" id="tgo">Applica</button><button id="tno">Annulla</button></div>
+</dialog>
+<datalist id="tags"><option value="ace"><option value="muro"><option value="attacco"><option value="difesa"><option value="errore"><option value="scambio-lungo"><option value="punto-A"><option value="punto-B"></datalist>
+
+<script>
+// Lettura e controllo dello scout (export xlsx di Volley Coach). Nessuna dipendenza:
+// funziona nel browser (incorporato in review.html) e in Node (per i test).
+//
+// Formato atteso: riga 1 = titolo ("Locali: Under 19"), riga 2 = intestazione
+//   ID | Tipo | Voto | Cognome | Numero | Pos. Giocatore | Pos. Palleggiatore | Set | Punti Locali | Punti Ospiti
+// con una riga per ogni tocco della squadra locale. Il punteggio e' quello a INIZIO rally.
+// Un rally senza righe e' un errore generico dell'avversario (l'export non lo riporta).
+const ScoutLib = (function () {
+  "use strict";
+
+  // ---- zip (solo cio' che serve per un xlsx: voci "stored" o "deflate")
+  const u16 = (b, o) => b[o] | (b[o + 1] << 8);
+  const u32 = (b, o) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
+
+  async function inflateRaw(data) {
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  // Elenco delle voci dell'archivio: nome -> {method, csize, offset}
+  function zipEntries(b) {
+    let e = b.length - 22;
+    while (e >= 0 && u32(b, e) !== 0x06054b50) e--;
+    if (e < 0) throw new Error("Il file non e' un archivio xlsx (zip non riconosciuto).");
+    const n = u16(b, e + 10);
+    let p = u32(b, e + 16);
+    const out = {};
+    for (let i = 0; i < n; i++) {
+      if (u32(b, p) !== 0x02014b50) throw new Error("Archivio zip danneggiato.");
+      const nl = u16(b, p + 28), xl = u16(b, p + 30), cl = u16(b, p + 32);
+      const name = new TextDecoder().decode(b.subarray(p + 46, p + 46 + nl));
+      out[name] = { method: u16(b, p + 10), csize: u32(b, p + 20), offset: u32(b, p + 42) };
+      p += 46 + nl + xl + cl;
+    }
+    return out;
+  }
+
+  async function zipRead(b, ent) {
+    const o = ent.offset;
+    if (u32(b, o) !== 0x04034b50) throw new Error("Archivio zip danneggiato.");
+    const start = o + 30 + u16(b, o + 26) + u16(b, o + 28);
+    const raw = b.subarray(start, start + ent.csize);
+    if (ent.method === 0) return raw;
+    if (ent.method === 8) return inflateRaw(raw);
+    throw new Error("Compressione zip non supportata (" + ent.method + ").");
+  }
+
+  // ---- xlsx -> righe (array di array, indice colonna 0 = A)
+  const unesc = s => s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (m, g) => {
+    g = g.toLowerCase();
+    if (g[0] === "#") return String.fromCodePoint(g[1] === "x" ? parseInt(g.slice(2), 16) : parseInt(g.slice(1), 10));
+    return { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }[g];
+  });
+  const textOf = xml => { let s = ""; xml.replace(/<t\b[^>]*>([\s\S]*?)<\/t>/g, (m, t) => { s += unesc(t); return m; }); return s; };
+  const colIndex = ref => { let n = 0; for (const ch of ref.replace(/[0-9]/g, "")) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
+
+  async function readXlsx(buffer) {
+    const b = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    const ent = zipEntries(b);
+    const text = async name => new TextDecoder("utf-8").decode(await zipRead(b, ent[name]));
+    const sheetName = Object.keys(ent).filter(k => /^xl\/worksheets\/sheet\d+\.xml$/.test(k))
+      .sort((x, y) => parseInt(x.match(/\d+/)[0]) - parseInt(y.match(/\d+/)[0]))[0];
+    if (!sheetName) throw new Error("Nel file xlsx non c'e' nessun foglio.");
+    const shared = [];
+    if (ent["xl/sharedStrings.xml"]) {
+      (await text("xl/sharedStrings.xml")).replace(/<si\b[^>]*>([\s\S]*?)<\/si>/g, (m, si) => { shared.push(textOf(si)); return m; });
+    }
+    const xml = await text(sheetName);
+    const rows = [];
+    xml.replace(/<row\b[^>]*>([\s\S]*?)<\/row>/g, (m, rowXml) => {
+      const cells = [];
+      rowXml.replace(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g, (mm, attrs, inner) => {
+        const ref = (attrs.match(/\br="([A-Z]+)\d+"/) || [])[1];
+        if (!ref || !inner) return mm;
+        const type = (attrs.match(/\bt="(\w+)"/) || [])[1];
+        const v = (inner.match(/<v>([\s\S]*?)<\/v>/) || [])[1];
+        let val = null;
+        if (type === "inlineStr") val = textOf(inner);
+        else if (v !== undefined) val = type === "s" ? shared[+v] : type === "str" || type === "e" ? unesc(v) : type === "b" ? v === "1" : Number(v);
+        cells[colIndex(ref)] = val === undefined ? null : val;
+        return mm;
+      });
+      rows.push(Array.from(cells, c => (c === undefined ? null : c)));
+      return m;
+    });
+    return rows;
+  }
+
+  // ---- righe -> tocchi
+  const COLS = { id: "ID", tipo: "Tipo", voto: "Voto", cognome: "Cognome", numero: "Numero", posG: "Pos. Giocatore",
+    posP: "Pos. Palleggiatore", set: "Set", loc: "Punti Locali", osp: "Punti Ospiti" };
+  const num = x => (x === null || x === undefined || x === "" || isNaN(Number(x)) ? null : Number(x));
+
+  function parseScout(rows) {
+    const issues = [];
+    const hi = rows.findIndex(r => r && String(r[0]).trim() === "ID");
+    if (hi < 0) throw new Error('Non trovo la riga di intestazione dello scout (la colonna "ID").');
+    const head = rows[hi].map(c => String(c === null ? "" : c).trim());
+    const col = {};
+    for (const [k, name] of Object.entries(COLS)) {
+      col[k] = head.indexOf(name);
+      if (col[k] < 0) throw new Error('Manca la colonna "' + name + '" nello scout.');
+    }
+    const team = hi > 0 && rows[0] && rows[0][0] ? String(rows[0][0]).trim() : "";
+    const touches = [];
+    for (let i = hi + 1; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r || r[col.id] === null || r[col.id] === undefined || r[col.id] === "") continue;
+      if (String(r[col.tipo] ?? "").trim() === "Cambio configurazione") continue;     // non e' un tocco ne' un rally
+      const t = { id: num(r[col.id]), tipo: String(r[col.tipo] ?? "").trim(), voto: String(r[col.voto] ?? "").trim(),
+        cognome: String(r[col.cognome] ?? "").trim(), numero: num(r[col.numero]), posG: String(r[col.posG] ?? "").trim(),
+        posP: String(r[col.posP] ?? "").trim(), set: num(r[col.set]), loc: num(r[col.loc]), osp: num(r[col.osp]) };
+      if (t.set === null || t.loc === null || t.osp === null) {
+        issues.push({ level: "err", msg: "Riga " + (i + 1) + " (ID " + t.id + "): set o punteggio mancante, la riga viene ignorata." });
+        continue;
+      }
+      touches.push(t);
+    }
+    return { team, touches, issues };
+  }
+
+  // ---- regola di fine set: 25 (15 al quinto) con almeno 2 punti di scarto, altrimenti ad oltranza
+  const target = set => (set === 5 ? 15 : 25);
+  const ended = (set, a, b) => Math.max(a, b) >= target(set) && Math.abs(a - b) >= 2;
+
+  // ---- tocchi -> punti
+  // Un punto per ogni (set, k = locali + ospiti). Il punteggio e' a inizio rally, quindi k e' l'ordine del punto.
+  function buildPoints(touches, extraIssues) {
+    const issues = (extraIssues || []).slice();
+    const sets = [...new Set(touches.map(t => t.set))].sort((a, b) => a - b);
+    const points = [], setInfo = [];
+    sets.forEach((s, si) => {
+      if (s !== si + 1) issues.push({ level: "err", msg: "I set non sono consecutivi: trovo il set " + s + " dopo " + (si ? sets[si - 1] : "nessuno") + "." });
+      const groups = new Map();                         // k -> {loc, osp, touches}
+      let prevK = -1;
+      for (const t of touches.filter(x => x.set === s)) {
+        const k = t.loc + t.osp;
+        let g = groups.get(k);
+        if (!g) {
+          g = { loc: t.loc, osp: t.osp, touches: [] };
+          groups.set(k, g);
+          if (k < prevK) issues.push({ level: "warn", msg: "Set " + s + ": le righe non sono in ordine di punteggio (" + t.loc + "-" + t.osp + ", ID " + t.id + ")." });
+          prevK = Math.max(prevK, k);
+        } else if (g.loc !== t.loc || g.osp !== t.osp) {
+          issues.push({ level: "err", msg: "Set " + s + ": due punteggi diversi (" + g.loc + "-" + g.osp + " e " + t.loc + "-" + t.osp + ") per lo stesso punto (ID " + t.id + ")." });
+        }
+        g.touches.push(t);
+      }
+      const n = Math.max(...groups.keys()) + 1;          // punti del set = ultimo k + 1
+      const list = [];
+      for (let k = 0; k < n; k++) {
+        const g = groups.get(k);
+        list.push(g ? { set: s, n: k + 1, loc: g.loc, osp: g.osp, touches: g.touches, missing: false, winner: null }
+          : { set: s, n: k + 1, loc: null, osp: null, touches: [], missing: true, winner: null });
+      }
+      // punti senza righe = errore generico dell'avversario: lo vince la squadra locale
+      for (let k = 0; k < n; k++) {
+        const p = list[k];
+        if (!p.missing) continue;
+        p.winner = "loc";
+        const a = list[k - 1], c = list[k + 1];
+        if (a && c && !a.missing && !c.missing) {
+          // prima del punto vuoto: il rally precedente lo ha vinto chi segna in piu' tra a e (a -> vuoto)
+          const dl = c.loc - a.loc, dosp = c.osp - a.osp;
+          if (dl + dosp !== 2 || dl < 1) {
+            issues.push({ level: "warn", msg: "Set " + s + ", punto " + p.n + ": senza righe ma non e' un errore avversario (da " + a.loc + "-" + a.osp + " a " + c.loc + "-" + c.osp + "). Da controllare." });
+            p.winner = dosp === 2 ? "osp" : null;
+            p.loc = a.loc + (dl === 2 ? 1 : 0); p.osp = a.osp + (dosp ? 1 : 0);
+            p.suspect = true;
+          } else {
+            p.loc = a.loc + (dl === 2 ? 1 : 0);
+            p.osp = a.osp + (dosp === 1 ? 1 : 0);
+          }
+        } else {
+          issues.push({ level: "warn", msg: "Set " + s + ", punto " + p.n + ": piu' punti consecutivi senza righe, punteggio non ricostruibile." });
+          p.suspect = true;
+        }
+      }
+      // chi vince ogni punto: lo dice il punteggio del punto dopo
+      for (let k = 0; k + 1 < n; k++) {
+        const p = list[k], q = list[k + 1];
+        if (p.missing || p.loc === null || q.loc === null) continue;
+        p.winner = q.loc > p.loc ? "loc" : q.osp > p.osp ? "osp" : null;
+        if (q.loc + q.osp !== p.loc + p.osp + 1) p.winner = null;
+        if (p.winner === null) issues.push({ level: "warn", msg: "Set " + s + ", punto " + p.n + ": non capisco chi ha segnato (" + p.loc + "-" + p.osp + " poi " + q.loc + "-" + q.osp + ")." });
+      }
+      // validita' del set: nessun punto dopo la fine, ultimo punto che chiude davvero il set
+      const last = list[n - 1];
+      let fin = null;
+      if (!last.missing) {
+        const wl = ended(s, last.loc + 1, last.osp), wo = ended(s, last.loc, last.osp + 1);
+        if (wl === wo) {
+          issues.push({ level: "err", msg: "Set " + s + ": dopo l'ultimo punto (" + last.loc + "-" + last.osp + ") il set " + (wl ? "finirebbe in entrambi i modi" : "non sarebbe finito") + ". Scout incompleto o punteggio errato?" });
+        } else {
+          last.winner = wl ? "loc" : "osp";
+          fin = wl ? [last.loc + 1, last.osp] : [last.loc, last.osp + 1];
+        }
+      } else {
+        issues.push({ level: "err", msg: "Set " + s + ": l'ultimo punto non ha righe, non si puo' ricostruire il finale." });
+      }
+      for (const p of list) {
+        if (!p.missing && p.loc !== null && ended(s, p.loc, p.osp)) {
+          issues.push({ level: "err", msg: "Set " + s + ": il set risulta gia' finito a " + p.loc + "-" + p.osp + " ma continua (punto " + p.n + ")." });
+          break;
+        }
+      }
+      setInfo.push({ set: s, points: n, final: fin, winner: fin ? (fin[0] > fin[1] ? "loc" : "osp") : null,
+        empty: list.filter(p => p.missing).length });
+      points.push(...list);
+    });
+    // la partita: finisce quando una squadra vince 3 set
+    let wl = 0, wo = 0;
+    setInfo.forEach((si, i) => {
+      if ((wl === 3 || wo === 3)) issues.push({ level: "err", msg: "La partita era gia' finita ma lo scout contiene il set " + si.set + "." });
+      if (si.winner === "loc") wl++; else if (si.winner === "osp") wo++;
+    });
+    if (setInfo.length && wl < 3 && wo < 3) issues.push({ level: "warn", msg: "La partita non risulta finita (set vinti " + wl + "-" + wo + "): lo scout e' parziale?" });
+    points.forEach((p, i) => { p.i = i + 1; });
+    return { points, sets: setInfo, issues, setsWon: [wl, wo] };
+  }
+
+  // `touchList` = i tocchi grezzi: e' cio' che si salva nel file corretto (non serve ricaricare l'xlsx)
+  function fromTouches(team, touchList, issues) {
+    if (!touchList.length) throw new Error("Lo scout non contiene nessun tocco.");
+    const b = buildPoints(touchList, issues);
+    return { team, touchList, touches: touchList.length, points: b.points, sets: b.sets, issues: b.issues, setsWon: b.setsWon };
+  }
+
+  function loadScout(rows) {
+    const { team, touches, issues } = parseScout(rows);
+    return fromTouches(team, touches, issues);
+  }
+
+  async function loadScoutFile(buffer) { return loadScout(await readXlsx(buffer)); }
+
+  // ---- abbinamento clip <-> punti
+  // Le clip "effettive" sono quelle che l'esportazione produce davvero: con Tieni, in ordine, senza quelle
+  // inghiottite da una sovrapposizione (stessa regola di select_intervals in export.py).
+  function effectiveClips(rallies, minClip) {
+    const out = [];
+    let prevEnd = 0;
+    for (const r of rallies.slice().sort((a, b) => a.start - b.start || a.end - b.end)) {
+      if (!r.keep) continue;
+      const start = Math.max(r.start, prevEnd, 0);
+      if (r.end - start < minClip) continue;
+      out.push(r);
+      prevEnd = r.end;
+    }
+    return out;
+  }
+
+  // k-esima clip effettiva = k-esimo punto. Riscrive `sp` (numero del punto, da 1) su tutte le clip.
+  function autoMatch(rallies, points, minClip) {
+    rallies.forEach(r => { delete r.sp; delete r.spm; });
+    const eff = effectiveClips(rallies, minClip);
+    eff.forEach((r, i) => { if (i < points.length) r.sp = i + 1; });
+    return { clips: eff.length, points: points.length };
+  }
+
+  const pointLabel = p => (p ? "S" + p.set + (p.loc !== null ? " " + p.loc + "-" + p.osp : " p" + p.n) : "");
+
+  const SUSPECT_GAP = 0.35;
+
+  function pearson(x, y) {
+    const n = x.length;
+    if (n < 6) return null;
+    const mx = x.reduce((a, b) => a + b, 0) / n, my = y.reduce((a, b) => a + b, 0) / n;
+    let sxy = 0, sxx = 0, syy = 0;
+    for (let i = 0; i < n; i++) { sxy += (x[i] - mx) * (y[i] - my); sxx += (x[i] - mx) ** 2; syy += (y[i] - my) ** 2; }
+    return sxx && syy ? sxy / Math.sqrt(sxx * syy) : null;
+  }
+
+  // Controlli sull'abbinamento: conteggi, punti usati due volte, correlazione durata/tocchi per set,
+  // pause tra un set e l'altro (devono essere tra le piu' lunghe), abbinamenti sospetti.
+  function analyze(rallies, points, minClip) {
+    const eff = effectiveClips(rallies, minClip);
+    const issues = [];
+    const pairs = [];
+    const noPoint = [];
+    for (const r of eff) {
+      const p = r.sp >= 1 && r.sp <= points.length ? points[r.sp - 1] : null;
+      if (p) pairs.push({ r, p }); else noPoint.push(r);
+    }
+    const count = new Map();
+    pairs.forEach(x => count.set(x.p.i, (count.get(x.p.i) || 0) + 1));
+    const dup = new Set([...count].filter(([, c]) => c > 1).map(([i]) => i));
+    const noClip = points.filter(p => !count.has(p.i));
+    if (eff.length !== points.length) issues.push({ level: "warn", msg: "Le clip effettive sono " + eff.length + " e i punti dello scout " + points.length + "." });
+    if (dup.size) issues.push({ level: "err", msg: dup.size + " punti hanno piu' di una clip: " + [...dup].slice(0, 8).map(i => pointLabel(points[i - 1])).join(", ") + "." });
+    if (noPoint.length) issues.push({ level: "warn", msg: noPoint.length + " clip effettive senza punto dello scout." });
+    if (noClip.length) issues.push({ level: "warn", msg: noClip.length + " punti dello scout senza clip: " + noClip.slice(0, 8).map(pointLabel).join(", ") + (noClip.length > 8 ? "..." : "") + "." });
+
+    const sq = x => Math.sqrt(x.p.touches.length), dur = x => x.r.end - x.r.start;
+    const corr = {};
+    for (const s of [...new Set(pairs.map(x => x.p.set))]) {
+      const g = pairs.filter(x => x.p.set === s);
+      corr[s] = pearson(g.map(sq), g.map(dur));
+    }
+    const all = pearson(pairs.map(sq), pairs.map(dur));
+    // sospetti: percentile della durata molto diverso dal percentile dei tocchi (robusto ai rally eccezionali)
+    const pct = vals => {
+      const idx = vals.map((v, i) => [v, i]).sort((x, y) => x[0] - y[0]);
+      const out = new Array(vals.length);
+      for (let i = 0; i < idx.length;) {
+        let j = i;
+        while (j + 1 < idx.length && idx[j + 1][0] === idx[i][0]) j++;
+        for (let k = i; k <= j; k++) out[idx[k][1]] = ((i + j) / 2 + 0.5) / idx.length;
+        i = j + 1;
+      }
+      return out;
+    };
+    const suspects = new Set();
+    if (pairs.length >= 10) {
+      const pd = pct(pairs.map(dur)), pt = pct(pairs.map(x => x.p.touches.length));
+      pairs.forEach((x, i) => { if (Math.abs(pd[i] - pt[i]) > SUSPECT_GAP) suspects.add(x.r); });
+    }
+    // pause tra clip consecutive: quelle a cavallo di due set devono essere tra le piu' lunghe
+    const gaps = [];
+    for (let i = 0; i + 1 < eff.length; i++) gaps.push({ i, gap: eff[i + 1].start - eff[i].end, a: eff[i], b: eff[i + 1] });
+    const ranked = gaps.slice().sort((x, y) => y.gap - x.gap);
+    const boundaries = [];
+    for (const g of gaps) {
+      const pa = pairs.find(x => x.r === g.a), pb = pairs.find(x => x.r === g.b);
+      if (pa && pb && pa.p.set !== pb.p.set) {
+        const rank = ranked.indexOf(g) + 1;
+        boundaries.push({ from: pa.p.set, to: pb.p.set, gap: g.gap, rank });
+      }
+    }
+    const nb = boundaries.length;
+    boundaries.forEach(b => {
+      if (b.rank > nb + 2) issues.push({ level: "warn", msg: "La pausa tra il set " + b.from + " e il " + b.to + " (" + (b.gap / 60).toFixed(1) +
+        " min) e' solo la " + b.rank + "a piu' lunga: l'abbinamento potrebbe essere sfasato." });
+    });
+    return { pairs, noPoint, noClip, dup, corr, all, suspects, boundaries, issues, eff: eff.length };
+  }
+
+  return { readXlsx, parseScout, buildPoints, fromTouches, loadScout, loadScoutFile, ended, target,
+    effectiveClips, autoMatch, analyze, pointLabel };
+})();
+
+if (typeof module !== "undefined" && module.exports) module.exports = ScoutLib;
+
+const EMPTY = { empty: true, video_name: "", video_src: "", duration: 1, threshold: 0, min_clip_s: 0.5, motion: [], motion_bin: 1,
+  motion_max: 1, whistles: [], cli: {}, rallies: [], meta: {} };
+let D = /*__DATA__*/null || EMPTY;
+const $ = id => document.getElementById(id);
+const v = $("v"), cv = $("main"), ov = $("over");
+let DUR = D.duration;
+let KEY = "volleycut:" + D.video_name;
+let R = D.rallies.map(r => Object.assign({}, r));
+let sel = null;                       // rally selezionato (riferimento all'oggetto)
+let SCOUT = null, MATCH = null;       // scout caricato e controlli sull'abbinamento clip <-> punti
+let v0 = 0, v1 = Math.min(DUR, 600);  // finestra visibile della timeline
+
+// ---- utilita'
+const fmt = t => { t = Math.max(0, t); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60;
+  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + s.toFixed(1).padStart(4, "0"); };
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const sorted = () => R.sort((a, b) => a.start - b.start || a.end - b.end);
+const kept = () => sorted().filter(r => r.keep);
+const store = {
+  save() { try { localStorage.setItem(KEY, JSON.stringify(R)); localStorage.setItem(KEY + ":scout", SCOUT ? JSON.stringify(scoutMeta()) : ""); } catch (e) {} },
+  loadScout() { try { const s = localStorage.getItem(KEY + ":scout"); return s ? JSON.parse(s) : null; } catch (e) { return null; } },
+  load() { try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } },
+  clear() { try { localStorage.removeItem(KEY); } catch (e) {} },
+};
+const saved = D.empty ? null : store.load();
+if (saved && saved.length) R = saved;
+const scoutMeta = () => (SCOUT ? { file: SCOUT.file, team: SCOUT.team, touchList: SCOUT.touchList } : null);
+function restoreScout(m) {
+  SCOUT = null;
+  if (m && m.touchList && m.touchList.length) {
+    try { SCOUT = ScoutLib.fromTouches(m.team || "", m.touchList, []); SCOUT.file = m.file || "scout"; } catch (e) { SCOUT = null; }
+  }
+  refreshMatch();
+}
+function refreshMatch() { MATCH = SCOUT ? ScoutLib.analyze(R, SCOUT.points, D.min_clip_s || 0.5) : null; }
+
+// ---- video
+$("vname").textContent = D.video_name;
+if (D.video_src) v.src = D.video_src;
+const needVideo = () => { $("vmsg").hidden = false; };
+if (D.empty) needVideo();
+v.addEventListener("error", needVideo);
+v.addEventListener("loadedmetadata", () => { $("vmsg").hidden = true; });
+$("pick").onclick = () => $("file").click();
+$("file").onchange = e => { const f = e.target.files[0]; if (f) v.src = URL.createObjectURL(f); };
+const seek = t => { v.currentTime = clamp(t, 0, DUR); };
+
+// ---- modifiche
+function touch(r) { r.dubious = false; r.reasons = (r.reasons || []).filter(x => x !== "troppo_corto" && x !== "troppo_lungo" && x !== "nessun_movimento" && x !== "nessun_calo_di_movimento" && x !== "limitato_dal_fischio"); r.reviewed = true; }
+function changed(rerender = true) { sorted(); refreshMatch(); store.save(); markDirty(true); if (rerender) renderRows(); draw(); stats(); renderCine(); }
+function addRally(t) {
+  const r = { n: 0, start: clamp(t, 0, DUR - 1), end: clamp(t + 20, 1, DUR), confidence: 1, confidence_level: "alta",
+              dubious: false, reasons: ["aggiunto_a_mano"], whistle: null, keep: true, tag: "", reviewed: true };
+  R.push(r); sel = r; changed();
+}
+const chosen = () => sorted().filter(r => r.sel);
+function selStats() {
+  const s = chosen(), tot = s.reduce((a, r) => a + (r.end - r.start), 0);
+  $("selinfo").textContent = s.length ? s.length + " clip, " + (tot / 60).toFixed(1) + " min" : "nessuna";
+  $("mini").disabled = !s.length;
+  const tags = [...new Set(R.map(r => (r.tag || "").trim()).filter(Boolean))].sort(), cur = $("seltag");
+  cur.innerHTML = '<option value="">per etichetta&hellip;</option>' + tags.map(t =>
+    '<option>' + t.replace(/&/g, "&amp;").replace(/</g, "&lt;") + "</option>").join("");
+}
+$("selall").onclick = () => { R.forEach(r => { if (isVisible(r)) r.sel = true; }); changed(); };
+$("selkeep").onclick = () => { R.forEach(r => { if (r.keep && isVisible(r)) r.sel = true; }); changed(); };
+$("selnone").onclick = () => { R.forEach(r => { r.sel = false; }); changed(); };
+$("seltag").onchange = e => { const t = e.target.value; if (t) R.forEach(r => { if ((r.tag || "").trim() === t) r.sel = true; }); changed(); };
+
+// ---- vista cinema: video grande, elenco delle clip a destra, riproduzione in sequenza
+let cine = false, scrubbing = false;
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function playlist() {
+  const f = $("cfilter").value || "keep";
+  return sorted().filter(passScout).filter(r => f === "keep" ? r.keep : f === "sel" ? r.sel : f === "dub" ? r.dubious
+    : f.startsWith("tag:") ? (r.tag || "").trim() === f.slice(4) : true);
+}
+function renderCine() {
+  if (!cine) return;
+  const cf = $("cfilter"), cur = cf.value || "keep";
+  const tags = [...new Set(R.map(r => (r.tag || "").trim()).filter(Boolean))].sort();
+  cf.innerHTML = '<option value="keep">Clip con Tieni</option><option value="sel">Selezionate</option><option value="dub">Dubbi</option><option value="all">Tutte</option>' +
+    tags.map(t => '<option value="tag:' + esc(t) + '">Etichetta: ' + esc(t) + "</option>").join("");
+  cf.value = [...cf.options].some(o => o.value === cur) ? cur : "keep";
+  const P = playlist(), tot = P.reduce((a, r) => a + (r.end - r.start), 0);
+  $("ccount").textContent = P.length + " clip, " + (tot / 60).toFixed(1) + " min";
+  $("clist").innerHTML = P.map((r, i) => '<div class="ci' + (r === sel ? " on" : "") + (r.keep ? "" : " off") + '" data-i="' + i + '">' +
+    '<span class="n">' + (i + 1) + '</span><span class="t">' + fmt(r.start) + '</span><span class="mut">' + (r.end - r.start).toFixed(0) + ' s</span><span class="sc">' +
+    (SCOUT && r.sp ? esc(ScoutLib.pointLabel(SCOUT.points[r.sp - 1])) : "") + '</span>' +
+    '<span class="tg">' + esc(r.tag || "") + '</span><label title="Tieni"><input type="checkbox" class="k" ' + (r.keep ? "checked" : "") + '></label>' +
+    '<label title="Seleziona per il minivideo"><input type="checkbox" class="s" ' + (r.sel ? "checked" : "") + "></label></div>").join("");
+  $("clist").querySelectorAll(".ci").forEach(el => {
+    const r = P[+el.dataset.i];
+    el.onclick = e => { if (!e.target.closest("input,label")) playClip(r); };
+    el.querySelector("input.k").onchange = e => { r.keep = e.target.checked; touch(r); changed(); };
+    el.querySelector("input.s").onchange = e => { r.sel = e.target.checked; changed(); };
+  });
+  const on = $("clist").querySelector(".ci.on"); if (on) on.scrollIntoView({ block: "nearest" });
+  syncBar();
+}
+function syncBar() {
+  const P = playlist(), i = P.indexOf(sel);
+  $("ctitle").textContent = sel && i >= 0 ? "Clip " + (i + 1) + " di " + P.length : (sel ? "Clip fuori elenco" : "Scegli una clip");
+  if (document.activeElement !== $("ctag")) $("ctag").value = sel ? sel.tag || "" : "";
+  $("ckeep").checked = !!(sel && sel.keep); $("csel").checked = !!(sel && sel.sel);
+}
+function playClip(r) { sel = r; seek(r.start); v.play(); renderCine(); renderRows(); }
+function stepClip(d) {
+  const P = playlist(); if (!P.length) return;
+  let i = P.indexOf(sel);
+  if (i < 0) i = d > 0 ? -1 : P.length; else i += d;
+  playClip(P[clamp(i, 0, P.length - 1)]);
+}
+function cineTick() {
+  const P = playlist(), t = v.currentTime;
+  if (!v.paused) {
+    const cur = P.find(r => t >= r.start - 0.05 && t < r.end);
+    if (!cur) {
+      const nx = P.find(r => r.start > t);
+      if ($("cauto").checked && nx) playClip(nx); else v.pause();
+    } else if (cur !== sel) { sel = cur; renderCine(); renderRows(); }
+  }
+  if (sel && !scrubbing) $("cseek").value = clamp((t - sel.start) / (sel.end - sel.start), 0, 1) * 1000;
+  $("ctime").textContent = sel ? fmt(clamp(t - sel.start, 0, sel.end - sel.start)) + " / " + (sel.end - sel.start).toFixed(1) + " s" : "";
+  $("cplay").innerHTML = v.paused ? "&#9654;" : "&#10074;&#10074;";
+}
+function setCine(on) {
+  cine = on; document.body.classList.toggle("cine", on); $("cine").hidden = !on;
+  v.controls = !on;
+  (on ? $("cvid") : $("vwrap")).prepend(v);
+  if (on) $("cpanel").insertBefore($("scflt"), $("clist")); else $("scbar").after($("scflt"));     // i filtri scout seguono la vista
+  if (on) { if (!sel && playlist().length) sel = playlist()[0]; renderCine(); } else draw();
+}
+$("gocine").onclick = () => setCine(true);
+$("cback").onclick = () => setCine(false);
+$("cfilter").onchange = renderCine;
+$("cprev").onclick = () => stepClip(-1);
+$("cnext").onclick = () => stepClip(1);
+$("cplay").onclick = () => {
+  if (!v.paused) { v.pause(); return; }
+  const P = playlist();
+  if (sel && P.includes(sel) && v.currentTime >= sel.start - 0.05 && v.currentTime < sel.end) v.play();
+  else if (P.length) playClip(P.includes(sel) ? sel : P[0]);
+};
+v.addEventListener("click", () => { if (cine) $("cplay").click(); });
+$("cseek").oninput = e => { if (sel) { scrubbing = true; seek(sel.start + e.target.value / 1000 * (sel.end - sel.start)); } };
+$("cseek").onchange = () => { scrubbing = false; };
+$("cspeed").onchange = e => { v.playbackRate = +e.target.value; };
+$("cfs").onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else $("cine").requestFullscreen(); };
+$("ctag").onchange = e => { if (sel) { sel.tag = e.target.value.trim(); touch(sel); changed(false); renderCine(); } };
+$("ckeep").onchange = e => { if (sel) { sel.keep = e.target.checked; touch(sel); changed(); } };
+$("csel").onchange = e => { if (sel) { sel.sel = e.target.checked; changed(); } };
+document.addEventListener("click", e => { if (e.target.matches && e.target.matches("button")) e.target.blur(); });
+
+// ---- scout: lettura dell'xlsx e controlli (la logica sta in scout_lib.js)
+const SIDE = { loc: "Locali", osp: "Ospiti" };
+function matchReport() {
+  if (!MATCH) return "";
+  const m = MATCH, f = x => (x === null || x === undefined ? "n.d." : x.toFixed(2).replace(".", ","));
+  const bi = m.issues;
+  return "<h3>Abbinamento con le clip</h3><p><b>" + m.eff + "</b> clip effettive (con Tieni, senza quelle assorbite da una sovrapposizione) contro <b>" +
+    SCOUT.points.length + "</b> punti. Correlazione durata/tocchi: <b>" + f(m.all) + "</b> (per set " +
+    Object.entries(m.corr).map(([k, v]) => k + ": " + f(v)).join(", ") + ").</p>" +
+    (m.boundaries.length ? "<p>Pause tra un set e l'altro: " + m.boundaries.map(b => "set " + b.from + "&rarr;" + b.to + " " + (b.gap / 60).toFixed(1).replace(".", ",") +
+      " min (" + b.rank + "a pausa piu' lunga)").join("; ") + ".</p>" : "") +
+    (bi.length ? "<ul>" + bi.map(i => '<li class="' + (i.level === "err" ? "bad" : "") + '">' + esc(i.msg) + "</li>").join("") + "</ul>" : '<p class="good">Abbinamento coerente.</p>') +
+    (m.suspects.size ? '<p class="sus">&#9888; ' + m.suspects.size + " clip con durata e tocchi poco coerenti (segnate con &#9888; nella tabella).</p>" : "") +
+    '<p class="mut">Nella tabella: &#9650; punto dei locali, &#9660; punto degli ospiti. Sposta o correggi un abbinamento col numero nella colonna Scout o con i pulsanti della barra.</p>';
+}
+function showScout() {
+  const s = SCOUT, errs = s.issues.filter(i => i.level === "err"), warns = s.issues.filter(i => i.level !== "err");
+  const rows = s.sets.map(x => "<tr><td>" + x.set + "</td><td>" + x.points + "</td><td>" + (x.final ? x.final[0] + "-" + x.final[1] : "?") +
+    "</td><td>" + (x.winner ? SIDE[x.winner] : "?") + "</td><td>" + x.empty + "</td></tr>").join("");
+  $("sbody").innerHTML = '<p class="mut">' + esc(s.file) + (s.team ? " &middot; " + esc(s.team) : "") + "</p>" +
+    "<p><b>" + s.touches + "</b> tocchi, <b>" + s.points.length + "</b> punti in " + s.sets.length + " set. Set vinti " +
+    s.setsWon[0] + "-" + s.setsWon[1] + " (locali-ospiti).</p>" +
+    '<table class="stab"><tr><th>Set</th><th>Punti</th><th>Finale</th><th>Vince</th><th title="Rally senza righe: errore generico dell\'avversario, non riportato nell\'xlsx">Errori avv.</th></tr>' + rows + "</table>" +
+    (errs.length ? '<p class="bad"><b>Da correggere:</b></p><ul>' + errs.map(i => "<li>" + esc(i.msg) + "</li>").join("") + "</ul>" : '<p class="good">Controlli superati: i set rispettano le regole di fine set.</p>') +
+    (warns.length ? "<p><b>Da controllare:</b></p><ul>" + warns.map(i => "<li>" + esc(i.msg) + "</li>").join("") + "</ul>" : "") + matchReport();
+  $("sdlg").showModal();
+}
+$("scout").onclick = () => $("sfile").click();
+$("sfile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  let s;
+  try { s = await ScoutLib.loadScoutFile(await f.arrayBuffer()); }
+  catch (err) { alert("Non riesco a leggere lo scout: " + err.message); return; }
+  if (R.some(r => r.spm) && !confirm("Ci sono abbinamenti corretti a mano. Sostituirli con l'abbinamento in ordine del nuovo scout?")) return;
+  s.file = f.name; SCOUT = s;
+  ScoutLib.autoMatch(R, SCOUT.points, D.min_clip_s || 0.5);
+  changed(); showScout();
+};
+$("screp").onclick = () => SCOUT && showScout();
+$("scauto").onclick = () => {
+  if (R.some(r => r.spm) && !confirm("Rifare l'abbinamento in ordine cancella le correzioni a mano. Continuare?")) return;
+  ScoutLib.autoMatch(R, SCOUT.points, D.min_clip_s || 0.5); changed();
+};
+function needSel() { if (!sel) { alert("Seleziona prima una clip."); return false; } return true; }
+function shiftFrom(i, d) {
+  const list = sorted();
+  for (let k = i; k < list.length; k++) {
+    const c = list[k]; if (!c.sp) continue;
+    const n = c.sp + d;
+    if (n < 1 || n > SCOUT.points.length) delete c.sp; else c.sp = n;
+    c.spm = true;
+  }
+}
+$("scskip").onclick = () => { if (needSel()) { shiftFrom(sorted().indexOf(sel), 1); changed(); } };
+$("scnot").onclick = () => { if (needSel()) { const i = sorted().indexOf(sel); delete sel.sp; sel.spm = true; shiftFrom(i + 1, -1); changed(); } };
+$("scdet").onclick = () => { if (needSel()) { delete sel.sp; sel.spm = true; changed(); } };
+$("sclose").onclick = () => $("sdlg").close();
+
+// ---- minivideo: la pagina non puo' tagliare il video, scarica la selezione e un .bat che usa lo script
+const safeName = s => (s || "").trim().replace(/[^A-Za-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "minivideo";
+const q = s => '"' + s.replace(/"/g, "") + '"';
+function miniCmd(name, mode, jsonRef) {
+  if (!D.cli.script) return ["python", '"%VOLLEYCUT%\\volley_cut.py"', "--match", '"%~dp0."', "--from-json", jsonRef, "--" + mode, "--name", name].join(" ");
+  const where = D.cli.match ? ["--match", q(D.cli.match)] : [q(D.cli.video), "--out", q(D.cli.out)];
+  return ["python", q(D.cli.script), ...where, "--from-json", jsonRef, "--" + mode, "--name", name].join(" ");
+}
+function miniState() {
+  const name = safeName($("dname").value), mode = document.querySelector('input[name=dm]:checked').value;
+  const s = chosen(), tot = s.reduce((a, r) => a + (r.end - r.start), 0);
+  $("dsum").textContent = s.length + " clip, " + (tot / 60).toFixed(1) + " min.";
+  $("dcmd").value = miniCmd(name, mode, q(name + ".json")) + (D.cli.script ? "" : "\n(salva .json e .bat nella cartella della partita; VOLLEYCUT = cartella di volley_cut.py)");
+  return { name, mode };
+}
+function download(name, text, type) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click();
+}
+$("mini").onclick = () => { miniState(); $("dlg").showModal(); };
+$("dname").oninput = miniState;
+document.querySelectorAll("input[name=dm]").forEach(e => e.onchange = miniState);
+$("dclose").onclick = () => $("dlg").close();
+$("dcopy").onclick = () => { $("dcmd").select(); try { navigator.clipboard.writeText($("dcmd").value); } catch (e) { document.execCommand("copy"); } };
+$("dmake").onclick = () => {
+  const { name, mode } = miniState();
+  const rs = chosen().map((r, i) => Object.assign({}, r, { n: i + 1, keep: true, dubious: false, duration: r.end - r.start }));
+  download(name + ".json", JSON.stringify({ meta: Object.assign({}, D.meta, { minivideo: name }), rallies: rs }, null, 2), "application/json");
+  const bat = ["@echo off", miniCmd(name, mode, '"%~dp0' + name + '.json"'), "pause", ""].join("\r\n");
+  setTimeout(() => download(name + ".bat", bat, "application/octet-stream"), 400);
+};
+
+function stats() {
+  selStats();
+  const k = R.filter(r => r.keep), tot = k.reduce((s, r) => s + (r.end - r.start), 0);
+  $("stats").innerHTML = "<b>" + k.length + "</b> clip tenute su " + R.length + " &middot; <b>" + (tot / 60).toFixed(1) +
+    " min</b> su " + (DUR / 60).toFixed(1) + " min &middot; dubbi rimasti: " + R.filter(r => r.dubious && r.keep).length;
+  scoutBar();
+}
+let fltFor = null;
+function scoutBar() {
+  $("scbar").hidden = !SCOUT; $("scflt").hidden = !SCOUT;
+  if (!SCOUT || !MATCH) { fltFor = null; Object.keys(FLT).forEach(k => { FLT[k] = ""; }); return; }
+  if (fltFor !== SCOUT) { fltFor = SCOUT; fillFilters(); }
+  $("scinfo").innerHTML = SCOUT.points.length + " punti &middot; " + MATCH.pairs.length + " clip abbinate" +
+    (MATCH.dup.size ? ' &middot; <b class="bad">' + MATCH.dup.size + " punti doppi</b>" : "") +
+    (MATCH.noClip.length ? " &middot; " + MATCH.noClip.length + " punti senza clip" : "") +
+    (MATCH.noPoint.length ? " &middot; " + MATCH.noPoint.length + " clip senza punto" : "") +
+    (MATCH.suspects.size ? ' &middot; <span class="sus">&#9888; ' + MATCH.suspects.size + " da controllare</span>" : "");
+}
+
+// ---- tabella
+// ---- filtri per scout (valgono per tabella, vista cinema e pulsanti di selezione)
+const FLT = { set: "", player: "", skill: "", grade: "", won: "" };
+const fltOn = () => Object.values(FLT).some(Boolean);
+function passScout(r) {
+  if (!SCOUT || !fltOn()) return true;
+  const p = r.sp ? SCOUT.points[r.sp - 1] : null;
+  if (!p) return false;
+  if (FLT.set && String(p.set) !== FLT.set) return false;
+  if (FLT.won === "err" ? !p.missing : FLT.won && p.winner !== FLT.won) return false;
+  if (FLT.player || FLT.skill || FLT.grade) {
+    return p.touches.some(t => (!FLT.player || t.cognome + "|" + t.numero === FLT.player) && (!FLT.skill || t.tipo === FLT.skill) && (!FLT.grade || t.voto === FLT.grade));
+  }
+  return true;
+}
+const isVisible = r => (!$("onlyd").checked || r.dubious) && passScout(r);
+function fillFilters() {
+  const pts = SCOUT.points, tc = pts.flatMap(p => p.touches);
+  const opts = (id, first, list) => {
+    const el = $(id), cur = FLT[el.dataset.k];
+    el.innerHTML = '<option value="">' + first + "</option>" + list.map(([v, l]) => '<option value="' + esc(v) + '">' + esc(l) + "</option>").join("");
+    el.value = list.some(([v]) => v === cur) ? cur : ""; FLT[el.dataset.k] = el.value;
+  };
+  const uniq = a => [...new Set(a)];
+  opts("fset", "tutti i set", uniq(pts.map(p => p.set)).map(s => [String(s), "Set " + s]));
+  const pl = new Map(); tc.filter(t => t.cognome).forEach(t => pl.set(t.cognome + "|" + t.numero, t.cognome + (t.numero !== null ? " #" + t.numero : "")));
+  opts("fplayer", "tutti i giocatori", [...pl].sort((a, b) => a[1].localeCompare(b[1])));
+  const order = ["Battuta", "Ricezione", "Alzata", "Attacco", "Muro", "Difesa"], sk = uniq(tc.map(t => t.tipo));
+  opts("fskill", "tutti i fondamentali", sk.sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99 || a.localeCompare(b)).map(s => [s, s]));
+  opts("fgrade", "tutti i voti", uniq(tc.map(t => t.voto)).filter(Boolean).sort().map(g => [g, g]));
+  opts("fwon", "chiunque segni", [["loc", "segnano i locali"], ["osp", "segnano gli ospiti"], ["err", "errore avversario"]]);
+}
+function applyFilters() {
+  renderRows(); renderCine(); selStats();
+  const n = R.filter(r => isVisible(r)).length;
+  $("fcount").textContent = fltOn() ? n + " clip corrispondono" : "";
+}
+["fset", "fplayer", "fskill", "fgrade", "fwon"].forEach(id => { $(id).dataset.k = { fset: "set", fplayer: "player", fskill: "skill", fgrade: "grade", fwon: "won" }[id];
+  $(id).onchange = e => { FLT[e.target.dataset.k] = e.target.value; applyFilters(); }; });
+$("fclear").onclick = () => { Object.keys(FLT).forEach(k => { FLT[k] = ""; }); fillFilters(); applyFilters(); };
+
+// ---- etichette dallo scout
+function scoutTag(r, o) {
+  const p = r.sp ? SCOUT.points[r.sp - 1] : null;
+  if (!p) return "";
+  const parts = [];
+  if (o.set) parts.push("S" + p.set + "_" + (p.loc !== null ? p.loc + "-" + p.osp : "p" + p.n));
+  if (o.win && p.winner) parts.push(p.winner === "loc" ? "pt-locali" : "pt-ospiti");
+  return parts.join("_");
+}
+const tagOpts = () => ({ set: $("tset").checked, win: $("twin").checked, over: $("tover").checked });
+function tagPreview() {
+  const o = tagOpts(), todo = R.filter(r => r.sp && (o.over || !(r.tag || "").trim()) && scoutTag(r, o));
+  const ex = todo[0];
+  $("tprev").textContent = todo.length + " clip da etichettare" + (ex ? " (es.: " + scoutTag(ex, o) + ")" : "") + ".";
+  $("tgo").disabled = !todo.length;
+}
+$("ftag").onclick = () => { tagPreview(); $("tdlg").showModal(); };
+["tset", "twin", "tover"].forEach(id => { $(id).onchange = tagPreview; });
+$("tno").onclick = () => $("tdlg").close();
+$("tgo").onclick = () => {
+  const o = tagOpts();
+  R.forEach(r => { if (r.sp && (o.over || !(r.tag || "").trim())) { const t = scoutTag(r, o); if (t) r.tag = t; } });
+  $("tdlg").close(); changed();
+};
+
+function scoutCell(r) {
+  if (!SCOUT || !MATCH) return "<td></td>";
+  const p = r.sp ? SCOUT.points[r.sp - 1] : null, sus = MATCH.suspects.has(r);
+  const lab = p ? ScoutLib.pointLabel(p) + (p.missing ? " &middot; err. avv." : " &middot; " + p.touches.length + " tocchi") +
+    (p.winner ? (p.winner === "loc" ? " &#9650;" : " &#9660;") : "") : "";
+  return '<td class="sc' + (p && MATCH.dup.has(p.i) ? " dup" : "") + '"><input type="number" class="sp" min="1" max="' + SCOUT.points.length +
+    '" value="' + (r.sp || "") + '"> <span' + (sus ? ' class="sus" title="Durata e numero di tocchi non tornano: controlla l\'abbinamento"' : "") + ">" +
+    (sus ? "&#9888; " : "") + lab + "</span></td>";
+}
+function renderRows() {
+  const body = $("rows");
+  body.innerHTML = "";
+  sorted().forEach((r, i) => {
+    if (!isVisible(r)) return;
+    const tr = document.createElement("tr");
+    tr.className = (r === sel ? "sel " : "") + (r.keep ? "" : "off");
+    const why = r.dubious ? '<span class="pill d">' + (r.reasons || []).join(", ") + "</span>"
+      : (r.reviewed ? '<span class="pill">rivisto</span>' : "");
+    tr.innerHTML = '<td class="nm">' + (i + 1) + '</td><td><input type="checkbox" class="s" ' + (r.sel ? "checked" : "") + "></td><td>" + fmt(r.start) + "</td><td>" + fmt(r.end) + "</td><td>" +
+      (r.end - r.start).toFixed(1) + " s</td><td>" + why + "</td>" + scoutCell(r) + '<td><input type="checkbox" class="k" ' + (r.keep ? "checked" : "") + "></td>" +
+      '<td><input type="text" list="tags" value="' + (r.tag || "").replace(/"/g, "&quot;") + '"></td>' +
+      '<td><button class="sm" data-a="s-">-0.5</button> <button class="sm" data-a="s+">+0.5</button> <button class="sm" data-a="sn">= ora</button></td>' +
+      '<td><button class="sm" data-a="e-">-0.5</button> <button class="sm" data-a="e+">+0.5</button> <button class="sm" data-a="en">= ora</button></td>' +
+      '<td><button class="sm" data-a="play">&#9654;</button> <button class="sm" data-a="del">elimina</button></td>';
+    tr.onclick = e => { if (e.target.closest("button,input")) return; select(r, true); };
+    const spi = tr.querySelector("input.sp");
+    if (spi) spi.onchange = e => { const n = parseInt(e.target.value, 10); if (n >= 1 && n <= SCOUT.points.length) r.sp = n; else delete r.sp; r.spm = true; changed(); };
+    tr.querySelector("input.k").onchange = e => { r.keep = e.target.checked; touch(r); changed(); };
+    tr.querySelector("input.s").onchange = e => { r.sel = e.target.checked; changed(false); tr.classList.toggle("sel", r === sel); };
+    tr.querySelector('input[type=text]').onchange = e => { r.tag = e.target.value.trim(); touch(r); changed(false); };
+    tr.querySelectorAll("button").forEach(b => b.onclick = () => act(r, b.dataset.a));
+    body.appendChild(tr);
+  });
+}
+function act(r, a) {
+  const now = v.currentTime;
+  if (a === "play") { select(r, false); seek(r.start); v.play(); return; }
+  if (a === "del") { R = R.filter(x => x !== r); if (sel === r) sel = null; changed(); return; }
+  if (a === "s-") r.start = clamp(r.start - 0.5, 0, r.end - 0.5);
+  if (a === "s+") r.start = clamp(r.start + 0.5, 0, r.end - 0.5);
+  if (a === "sn") r.start = clamp(now, 0, r.end - 0.5);
+  if (a === "e-") r.end = clamp(r.end - 0.5, r.start + 0.5, DUR);
+  if (a === "e+") r.end = clamp(r.end + 0.5, r.start + 0.5, DUR);
+  if (a === "en") r.end = clamp(now, r.start + 0.5, DUR);
+  touch(r); changed();
+  if (a[0] === "s") seek(r.start); else if (a[0] === "e") seek(Math.max(r.start, r.end - 3));
+}
+function select(r, doSeek) {
+  sel = r; if (doSeek) seek(r.start);
+  if (r.start < v0 || r.end > v1) { const w = v1 - v0, c = (r.start + r.end) / 2; v0 = clamp(c - w / 2, 0, Math.max(0, DUR - w)); v1 = v0 + w; }
+  renderRows(); draw(); renderCine();
+  const el = document.querySelector("#rows tr.sel"); if (el) el.scrollIntoView({ block: "nearest" });
+}
+$("onlyd").onchange = applyFilters;
+$("reset").onclick = () => { if (!D.empty && confirm("Scartare tutte le modifiche e tornare alla proposta di partenza?")) {
+  store.clear(); R = D.rallies.map(r => Object.assign({}, r)); sel = null; changed(); } };
+
+// ---- salvataggio e apertura su file
+const hhmm = () => new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+const JSON_TYPES = [{ description: "Rally (JSON)", accept: { "application/json": [".json"] } }];
+let fh = null, dirty = false, lastSave = "";
+// su telefono il salvataggio su file e' disattivato: il browser non fa scegliere la cartella e il file finirebbe nei Download
+const MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+  (matchMedia("(pointer:coarse)").matches && Math.min(screen.width, screen.height) < 700);
+if (MOBILE) ["save", "saveas"].forEach(id => { $(id).disabled = true; $(id).title = "Su telefono il salvataggio e' disattivato: salva dal computer"; });
+function status() {
+  if (MOBILE) { $("status").innerHTML = "Salvataggio su file disattivato su telefono &middot; le modifiche restano solo in questa pagina"; return; }
+  $("status").innerHTML = (dirty ? '<b style="color:var(--dub)">Modifiche non salvate su file</b>' : "Tutto salvato su file") +
+    (lastSave ? " &middot; ultimo salvataggio " + lastSave + (fh ? " in " + fh.name : "") : "") +
+    " &middot; copia automatica nel browser";
+}
+function markDirty(d) { dirty = d; status(); }
+const projectData = () => ({ video_name: D.video_name, duration: D.duration, threshold: D.threshold, min_clip_s: D.min_clip_s,
+  motion: D.motion, motion_bin: D.motion_bin, motion_max: D.motion_max, whistles: D.whistles });
+let loadedRev = +(D.meta && D.meta.revision || 0);          // revisione del file aperto: serve a non sovrascrivere un salvataggio fatto altrove
+const toJSON = rev => JSON.stringify({ meta: Object.assign({}, D.meta, { reviewed: true, revision: rev, saved_at: new Date().toISOString() },
+  SCOUT ? { scout: scoutMeta() } : {}, { project: projectData() }),
+  rallies: sorted().map((r, i) => Object.assign({}, r, { n: i + 1, duration: r.end - r.start })) }, null, 2);
+function setProject(pj, rallies) {
+  D = Object.assign({}, EMPTY, pj, { empty: false, video_src: "", rallies: rallies.map(r => Object.assign({}, r)),
+    cli: D.cli || {}, meta: {} });
+  DUR = D.duration; KEY = "volleycut:" + D.video_name;
+  $("vname").textContent = D.video_name; document.title = "Revisione - " + D.video_name;
+  v.removeAttribute("src"); v.load(); needVideo();
+  v0 = 0; v1 = Math.min(DUR, 600);
+}
+async function saveFile(asNew) {
+  if (MOBILE) { alert("Su telefono il salvataggio e' disattivato: salva dal computer."); return; }
+  if (D.empty) { alert("Apri prima una partita (pulsante Apri...)."); return; }
+  let rev = loadedRev + 1;
+  if (window.showSaveFilePicker) {
+    try {
+      if (!fh || asNew) { fh = await showSaveFilePicker({ suggestedName: "partita.json", types: JSON_TYPES }); }
+      else {                                                         // il file e' cambiato da quando l'ho aperto? (altro PC, OneDrive)
+        try {
+          const cur = JSON.parse(await (await fh.getFile()).text()), r = +(cur.meta && cur.meta.revision || 0);
+          if (r > loadedRev) {
+            if (!confirm("Il file e' stato salvato da un'altra parte dopo che lo hai aperto (revisione " + r + ", la tua " + loadedRev +
+                         ").\nSovrascriverlo con il tuo lavoro? Annulla per non perdere quello degli altri.")) return;
+            rev = r + 1;
+          }
+        } catch (e) { /* file illeggibile: lo sovrascrivo */ }
+      }
+      const w = await fh.createWritable(); await w.write(toJSON(rev)); await w.close();
+      loadedRev = rev; lastSave = hhmm(); markDirty(false); return;
+    } catch (e) { if (e.name === "AbortError") return; fh = null; }   // altrimenti: scarica
+  }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([toJSON(rev)], { type: "application/json" }));
+  a.download = "partita.json"; a.click();
+  loadedRev = rev; lastSave = hhmm(); markDirty(false);
+  alert("Il browser non permette di scegliere la cartella: il file e' stato scaricato come partita.json\n" +
+        "(nella cartella Download). Spostalo in quella dei risultati.");
+}
+function loadText(text, name) {
+  let d;
+  try { d = JSON.parse(text); if (!Array.isArray(d.rallies)) throw 0; } catch (e) { alert("File non valido: non e' un rallies.json."); return false; }
+  if (dirty && !confirm("Ci sono modifiche non salvate su file. Aprire comunque e sostituirle?")) return false;
+  const pj = d.meta && d.meta.project;
+  if (pj && (D.empty || pj.video_name !== D.video_name)) setProject(pj, d.rallies);
+  else if (D.empty) { alert("Questo file non contiene i dati della partita (movimento, fischi). Aprilo da review.html, salva, e poi riaprilo qui."); return false; }
+  loadedRev = +(d.meta && d.meta.revision || 0);
+  R = d.rallies.map(r => Object.assign({ confidence: 1, confidence_level: "alta", dubious: false, reasons: [], whistle: null, keep: true, tag: "" },
+    r, { start: +r.start, end: +r.end, reasons: r.reasons || [] }));
+  restoreScout(d.meta && d.meta.scout);
+  sel = null; lastSave = name ? hhmm() : lastSave;
+  if (sorted().length) { const w = v1 - v0; v0 = clamp(R[0].start - 30, 0, Math.max(0, DUR - w)); v1 = v0 + w; seek(R[0].start); }
+  changed(); markDirty(false); return true;
+}
+async function openFile() {
+  if (window.showOpenFilePicker) {
+    try { const [h] = await showOpenFilePicker({ types: JSON_TYPES }); const f = await h.getFile();
+      if (loadText(await f.text(), h.name)) fh = h; status(); } catch (e) { /* annullato */ }
+  } else $("jfile").click();
+}
+$("save").onclick = () => saveFile(false);
+$("saveas").onclick = () => saveFile(true);
+$("open").onclick = openFile;
+$("jfile").onchange = async e => { const f = e.target.files[0]; if (f) { loadText(await f.text(), f.name); fh = null; status(); } e.target.value = ""; };
+window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+
+// ---- timeline
+const mx = t => (t - v0) / (v1 - v0) * cv.clientWidth;
+const mt = x => v0 + x / cv.clientWidth * (v1 - v0);
+function fit(c) { const d = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== Math.round(w * d) || c.height !== Math.round(h * d)) { c.width = Math.round(w * d); c.height = Math.round(h * d); }
+  const g = c.getContext("2d"); g.setTransform(d, 0, 0, d, 0, 0); return g; }
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const rcol = r => !r.keep ? css("--off") : r.dubious ? css("--dub") : css("--ok");
+const BAND = 26;
+
+function curve(g, x0, x1, t0, t1, y0, y1) {
+  const M = D.motion, bin = D.motion_bin, mmax = D.motion_max;
+  const i0 = Math.max(0, Math.floor(t0 / bin)), i1 = Math.min(M.length - 1, Math.ceil(t1 / bin));
+  g.beginPath(); g.moveTo(x0, y1);
+  const step = Math.max(1, Math.floor((i1 - i0) / (x1 - x0) / 1.5));
+  for (let i = i0; i <= i1; i += step) {
+    let m = 0; for (let j = i; j < Math.min(i + step, M.length); j++) m = Math.max(m, M[j]);
+    g.lineTo(x0 + (i * bin - t0) / (t1 - t0) * (x1 - x0), y1 - Math.min(1, m / mmax) * (y1 - y0));
+  }
+  g.lineTo(x1, y1); g.closePath(); g.fill();
+}
+function draw() {
+  const g = fit(cv), W = cv.clientWidth, H = cv.clientHeight;
+  g.clearRect(0, 0, W, H);
+  g.globalAlpha = .55; g.fillStyle = css("--mov"); curve(g, 0, W, v0, v1, BAND + 4, H - 16); g.globalAlpha = 1;
+  const ty = H - 16 - Math.min(1, D.threshold / D.motion_max) * (H - 16 - BAND - 4);
+  g.strokeStyle = css("--dub"); g.setLineDash([4, 4]); g.beginPath(); g.moveTo(0, ty); g.lineTo(W, ty); g.stroke(); g.setLineDash([]);
+  g.strokeStyle = css("--whi"); g.lineWidth = 1;
+  D.whistles.forEach(w => { if (w >= v0 && w <= v1) { const x = Math.round(mx(w)) + .5; g.beginPath(); g.moveTo(x, BAND); g.lineTo(x, H - 16); g.stroke(); } });
+  sorted().forEach(r => {
+    if (r.end < v0 || r.start > v1) return;
+    const a = mx(r.start), b = mx(r.end);
+    g.globalAlpha = .18; g.fillStyle = rcol(r); g.fillRect(a, BAND, b - a, H - 16 - BAND);
+    g.globalAlpha = 1; g.fillRect(a, 0, Math.max(1, b - a), BAND - 3);
+    if (r === sel) { g.strokeStyle = css("--acc"); g.lineWidth = 2; g.strokeRect(a, 1, b - a, H - 18); g.lineWidth = 1; }
+    g.fillRect(a - 1, 0, 3, BAND - 3); g.fillRect(b - 2, 0, 3, BAND - 3);
+    if (r.sel) { g.fillStyle = css("--acc"); g.fillRect(a, BAND - 3, Math.max(1, b - a), 3); }
+  });
+  // asse dei tempi
+  const span = v1 - v0, steps = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+  const st = steps.find(s => span / s <= W / 70) || 3600;
+  g.fillStyle = css("--mut"); g.font = "11px system-ui"; g.textAlign = "left";
+  for (let t = Math.ceil(v0 / st) * st; t < v1; t += st) { const x = mx(t); g.fillRect(x, H - 16, 1, 4); g.fillText(fmt(t), x + 3, H - 4); }
+  const px = mx(v.currentTime);
+  if (px >= 0 && px <= W) { g.fillStyle = css("--fg"); g.fillRect(px - .5, 0, 1.5, H - 16); }
+  drawOver();
+}
+function drawOver() {
+  const g = fit(ov), W = ov.clientWidth, H = ov.clientHeight;
+  g.clearRect(0, 0, W, H);
+  g.globalAlpha = .5; g.fillStyle = css("--mov"); curve(g, 0, W, 0, DUR, 2, H - 2); g.globalAlpha = 1;
+  sorted().forEach(r => { g.fillStyle = rcol(r); g.fillRect(r.start / DUR * W, 0, Math.max(1, (r.end - r.start) / DUR * W), 6); });
+  g.strokeStyle = css("--acc"); g.lineWidth = 2; g.strokeRect(v0 / DUR * W, 1, (v1 - v0) / DUR * W, H - 2); g.lineWidth = 1;
+  g.fillStyle = css("--fg"); g.fillRect(v.currentTime / DUR * W - .5, 0, 1.5, H);
+}
+function zoom(f, cx) {
+  const c = mt(cx), w = clamp((v1 - v0) * f, 20, DUR);
+  v0 = clamp(c - (c - v0) / (v1 - v0) * w, 0, DUR - w); v1 = v0 + w; draw();
+}
+let drag = null;
+cv.addEventListener("wheel", e => { e.preventDefault(); zoom(e.deltaY > 0 ? 1.25 : 0.8, e.offsetX); }, { passive: false });
+cv.addEventListener("mousedown", e => {
+  const x = e.offsetX, t = mt(x), cand = sorted();
+  const near = (r, side) => Math.abs(x - mx(side === "s" ? r.start : r.end)) <= 6;
+  let hit = null;
+  if (sel) { if (near(sel, "s")) hit = { r: sel, side: "s" }; else if (near(sel, "e")) hit = { r: sel, side: "e" }; }
+  if (!hit) for (const r of cand) { if (near(r, "s")) { hit = { r, side: "s" }; break; } if (near(r, "e")) { hit = { r, side: "e" }; break; } }
+  if (hit) { sel = hit.r; drag = { kind: "edge", ...hit }; renderRows(); draw(); return; }
+  const inside = cand.find(r => t >= r.start && t <= r.end);
+  drag = { kind: "pan", x0: x, v0, v1, moved: false, t, inside };
+});
+window.addEventListener("mousemove", e => {
+  if (!drag) return;
+  const rect = cv.getBoundingClientRect(), x = e.clientX - rect.left;
+  if (drag.kind === "edge") {
+    const t = clamp(mt(x), 0, DUR), r = drag.r;
+    if (drag.side === "s") r.start = Math.min(t, r.end - 0.5); else r.end = Math.max(t, r.start + 0.5);
+    draw();
+  } else {
+    if (Math.abs(x - drag.x0) > 3) drag.moved = true;
+    if (drag.moved) { const dt = (drag.x0 - x) / cv.clientWidth * (drag.v1 - drag.v0), w = drag.v1 - drag.v0;
+      v0 = clamp(drag.v0 + dt, 0, DUR - w); v1 = v0 + w; draw(); }
+  }
+});
+window.addEventListener("mouseup", () => {
+  if (!drag) return;
+  if (drag.kind === "edge") { touch(drag.r); seek(drag.side === "s" ? drag.r.start : Math.max(drag.r.start, drag.r.end - 3)); changed(); }
+  else if (!drag.moved) { if (drag.inside) select(drag.inside, false); seek(drag.t); }
+  drag = null;
+});
+cv.addEventListener("dblclick", e => { const t = mt(e.offsetX);
+  if (!sorted().some(r => t >= r.start && t <= r.end)) addRally(t); });
+function overMove(e) { const w = v1 - v0, c = e.offsetX / ov.clientWidth * DUR;
+  v0 = clamp(c - w / 2, 0, DUR - w); v1 = v0 + w; draw(); }
+ov.addEventListener("mousedown", e => { overMove(e); const mv = ev => overMove({ offsetX: ev.clientX - ov.getBoundingClientRect().left });
+  const up = () => { window.removeEventListener("mousemove", mv); window.removeEventListener("mouseup", up); };
+  window.addEventListener("mousemove", mv); window.addEventListener("mouseup", up); });
+
+// ---- riproduzione, anteprima senza tagli
+function tick() {
+  if (cine) { cineTick(); requestAnimationFrame(tick); return; }
+  if (!v.paused && $("preview").checked) {
+    const t = v.currentTime, k = kept();
+    if (!k.some(r => t >= r.start - 0.05 && t < r.end)) {
+      const nx = k.find(r => r.start > t);
+      if (nx) { seek(nx.start); select(nx, false); } else v.pause();
+    }
+  }
+  if (!v.paused) {
+    const t = v.currentTime;
+    if (t > v1 || t < v0) { const w = v1 - v0; v0 = clamp(t - w * 0.1, 0, DUR - w); v1 = v0 + w; }
+    const cur = sorted().find(r => t >= r.start && t < r.end);
+    if (cur && cur !== sel) { sel = cur; renderRows(); const el = document.querySelector("#rows tr.sel"); if (el) el.scrollIntoView({ block: "nearest" }); }
+  }
+  draw(); requestAnimationFrame(tick);
+}
+v.addEventListener("seeked", draw);
+
+document.addEventListener("keydown", e => {
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && document.activeElement.type !== "checkbox") return;
+  const k = e.key.toLowerCase(), all = sorted(), i = all.indexOf(sel);
+  if ((e.ctrlKey || e.metaKey) && k === "s") { e.preventDefault(); saveFile(false); }
+  else if (k === " ") { e.preventDefault(); v.paused ? v.play() : v.pause(); }
+  else if (k === "arrowleft") { e.preventDefault(); seek(v.currentTime - (e.shiftKey ? 1 : 5)); }
+  else if (k === "arrowright") { e.preventDefault(); seek(v.currentTime + (e.shiftKey ? 1 : 5)); }
+  else if (cine && (k === "n" || k === "p")) stepClip(k === "n" ? 1 : -1);
+  else if (k === "n") { const r = all[Math.min(all.length - 1, i + 1)]; if (r) select(r, true); }
+  else if (k === "p") { const r = all[Math.max(0, i - 1)]; if (r) select(r, true); }
+  else if (k === "s" && sel) { sel.sel = !sel.sel; changed(); }
+  else if (k === "x" && sel) { sel.keep = !sel.keep; touch(sel); changed(); }
+  else if (k === "[" && sel) act(sel, "sn");
+  else if (k === "]" && sel) act(sel, "en");
+});
+window.addEventListener("resize", draw);
+if (sorted().length) { const w = v1 - v0; v0 = clamp(R[0].start - 30, 0, Math.max(0, DUR - w)); v1 = v0 + w; seek(R[0].start); }
+restoreScout(store.loadScout());
+renderRows(); stats(); draw(); markDirty(!!(saved && saved.length)); requestAnimationFrame(tick);
+</script>
+</body>
+</html>

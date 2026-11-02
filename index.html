@@ -13,6 +13,11 @@ body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,Segoe
 #top{flex:none;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 16px}
 #vwrap{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
 video{max-height:26vh;max-width:100%;background:#000;border-radius:6px}
+#vbox{display:flex;flex-direction:column;max-width:100%}
+#v{height:var(--vh,26vh);max-height:none}
+#vgrip{height:12px;cursor:ns-resize;touch-action:none;display:flex;align-items:center;justify-content:center}
+#vgrip::after{content:"";width:48px;height:4px;border-radius:2px;background:var(--line)}
+#vgrip:hover::after,#vgrip.drag::after{background:var(--acc)}
 #side{flex:1;min-width:240px}
 h1{font-size:15px;margin:0 0 6px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
@@ -70,7 +75,8 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
 <body>
 <div id="top">
   <div id="vwrap">
-    <video id="v" controls preload="metadata"></video>
+    <div id="vbox"><video id="v" controls preload="metadata"></video>
+      <div id="vgrip" title="Trascina per ingrandire o ridurre il video (doppio clic: misura iniziale)"></div></div>
     <div id="side">
       <h1>Revisione rally &mdash; <span id="vname"></span></h1>
       <div class="row" id="vmsg" hidden><button class="pri" id="vpick">Scegli il video della partita&hellip;</button>
@@ -1144,6 +1150,22 @@ document.addEventListener("keydown", e => {
   else if (k === "]" && sel) act(sel, "en");
 });
 window.addEventListener("resize", draw);
+// ---- altezza del video: si trascina la maniglia sotto il video; la misura resta nel browser
+(function () {
+  const g = $("vgrip"), VH = "volleycut:videoHeight", lim = h => Math.max(120, Math.min(h, innerHeight * 0.8));
+  const set = h => { document.documentElement.style.setProperty("--vh", h ? lim(h) + "px" : ""); draw(); };
+  try { const s = +localStorage.getItem(VH); if (s) set(s); } catch (e) { /* senza memoria del browser: misura di partenza */ }
+  g.onpointerdown = e => {
+    const y0 = e.clientY, h0 = v.getBoundingClientRect().height;
+    g.setPointerCapture(e.pointerId); g.classList.add("drag");
+    g.onpointermove = m => set(h0 + m.clientY - y0);
+    g.onpointerup = () => {
+      g.onpointermove = g.onpointerup = null; g.classList.remove("drag");
+      try { localStorage.setItem(VH, Math.round(v.getBoundingClientRect().height)); } catch (e) { /* ok */ }
+    };
+  };
+  g.ondblclick = () => { set(0); try { localStorage.removeItem(VH); } catch (e) { /* ok */ } };
+})();
 if (sorted().length) { const w = v1 - v0; v0 = clamp(R[0].start - 30, 0, Math.max(0, DUR - w)); v1 = v0 + w; seek(R[0].start); }
 restoreScout(store.loadScout());
 renderRows(); stats(); draw(); markDirty(!!(saved && saved.length)); requestAnimationFrame(tick);

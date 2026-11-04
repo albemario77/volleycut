@@ -42,7 +42,7 @@ tr.off td{color:var(--mut)}
 tr.off .nm{text-decoration:line-through}
 .pill{font-size:12px;border-radius:10px;padding:1px 8px;border:1px solid var(--line)}
 .pill.d{border-color:var(--dub);color:var(--dub)}
-input[type=text]{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:2px 6px;width:130px}
+input[type=text],input[type=number]{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:2px 6px;width:130px}
 .legend span{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 10px;vertical-align:baseline}
 dialog{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:10px;max-width:640px;width:92vw}
 dialog::backdrop{background:rgba(0,0,0,.5)}
@@ -86,6 +86,12 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
         <label><input type="checkbox" id="preview"> Anteprima senza tagli (salta i tempi morti)</label>
       </div>
       <div class="row" id="stats"></div>
+      <div class="row" id="thrrow">
+        <label title="Linea tratteggiata arancione nel grafico del movimento. Sopra = gioco, sotto = campo fermo">Soglia di movimento
+          <input type="number" id="thr" step="0.1" min="0" style="width:5.5em"></label>
+        <button id="recalc" title="Ricalcola inizio e fine delle clip che non hai corretto a mano; le altre restano come sono">Ricalcola le clip non corrette</button>
+        <span class="mut" id="thrinfo"></span>
+      </div>
       <div class="row">
         <button class="pri" id="save" title="Salva il lavoro in un file partita.json (Ctrl+S)">Salva</button>
         <button id="saveas" title="Salva con un altro nome o in un'altra cartella">Salva come&hellip;</button>
@@ -95,6 +101,9 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
         <input type="file" id="file" accept="video/*" hidden>
         <button id="reset" title="Torna alla proposta automatica">Ripristina originale</button>
         <button id="gocine" title="Video grande con l'elenco delle clip a destra">Vista cinema</button>
+        <button id="fprev" title="Fotogramma precedente (virgola o Alt+freccia sinistra)">&#9664;|</button>
+        <button id="fnext" title="Fotogramma successivo (punto o Alt+freccia destra)">|&#9654;</button>
+        <button id="snap" title="Salva come immagine il fotogramma attuale del video (F)">Foto</button>
         <button id="scout" title="Carica lo scout (file .xlsx esportato da Volley Coach) e controllalo">Carica scout&hellip;</button>
         <input type="file" id="sfile" accept=".xlsx" hidden>
       </div>
@@ -102,7 +111,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
       <details class="mut" id="help"><summary>Scorciatoie e aiuto</summary>
         <kbd>spazio</kbd> play/pausa &middot; <kbd>&larr;</kbd><kbd>&rarr;</kbd> &plusmn;5 s (con <kbd>maiusc</kbd> &plusmn;1 s) &middot;
         <kbd>N</kbd>/<kbd>P</kbd> rally successivo/precedente &middot; <kbd>X</kbd> tieni/scarta &middot; <kbd>S</kbd> aggiungi alla selezione per il minivideo &middot;
-        <kbd>[</kbd> <kbd>]</kbd> inizio/fine = istante attuale. Timeline: trascina i bordi di un rally,
+        <kbd>,</kbd> <kbd>.</kbd> (o <kbd>Alt</kbd>+frecce) fotogramma indietro/avanti &middot; <kbd>F</kbd> salva il fotogramma come foto &middot; <kbd>[</kbd> <kbd>]</kbd> inizio/fine = istante attuale. Timeline: trascina i bordi di un rally,
         doppio clic su un punto vuoto per aggiungerne uno, rotella per lo zoom, trascina per spostarti.
       </details>
       <div class="legend mut"><span style="background:var(--ok)"></span>tieni<span style="background:var(--dub)"></span>dubbio<span style="background:var(--off)"></span>scartato<span style="background:var(--whi)"></span>fischi<span style="background:var(--mov)"></span>movimento</div>
@@ -164,6 +173,9 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
         <label>Etichetta <input type="text" list="tags" id="ctag"></label>
         <label><input type="checkbox" id="ckeep"> Tieni</label>
         <label><input type="checkbox" id="csel"> Sel.</label>
+        <button id="cfprev" title="Fotogramma precedente (virgola o Alt+freccia sinistra)">&#9664;|</button>
+        <button id="cfnext" title="Fotogramma successivo (punto o Alt+freccia destra)">|&#9654;</button>
+        <button id="csnap" title="Salva come immagine il fotogramma attuale (F)">Foto</button>
         <select id="cspeed"><option value="0.25">0,25x</option><option value="0.5">0,5x</option><option value="1" selected>1x</option><option value="1.5">1,5x</option><option value="2">2x</option></select>
         <label><input type="checkbox" id="cauto" checked> avanti automatico</label>
         <button id="cfs">Schermo intero</button>
@@ -546,8 +558,119 @@ const ScoutLib = (function () {
 
 if (typeof module !== "undefined" && module.exports) module.exports = ScoutLib;
 
+// Segmentazione dei rally da fischi e movimento: stessa logica di volleycut/segmentation.py,
+// sulle misure di movimento a intervalli (il massimo di ogni secondo salvato nella pagina).
+// Funzioni pure. Non deve contenere la sequenza di chiusura dello script.
+const SegLib = (function () {
+  const DEFAULTS = { pre_whistle_s: 2.5, post_margin_s: 2.0, drop_hold_s: 3.0, min_active_s: 4.0, onset_timeout_s: 9.0,
+    cap_before_next_s: 1.0, end_whistle_s: 6.0, min_rally_s: 5.0, max_rally_s: 60.0 };
+
+  // primo indice i tale che a[i] >= x (come numpy.searchsorted, lato sinistro)
+  function lowerBound(a, x) { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < x) lo = m + 1; else hi = m; } return lo; }
+  const level = s => (s >= 0.8 ? "alta" : s >= 0.5 ? "media" : "bassa");
+
+  // whistles: tempi dei fischi; motion: energia per intervallo; bin: durata dell'intervallo (s)
+  function segment(whistles, motion, bin, duration, thr, cfgIn) {
+    const cfg = Object.assign({}, DEFAULTS, cfgIn || {});
+    const ws = whistles.slice().sort((a, b) => a - b);
+    if (motion.length < 2 || !ws.length) return [];
+    const times = motion.map((_, i) => (i + 0.5) * bin), dt = bin, n = times.length;
+    const high = motion.map(x => x >= thr);
+    const runA = [], runB = [];                      // tratti consecutivi di movimento basso: [inizio, fine)
+    for (let i = 0; i < n; i++) {
+      if (high[i]) continue;
+      let j = i; while (j + 1 < n && !high[j + 1]) j++;
+      runA.push(times[i] - dt / 2); runB.push(times[j] + dt / 2); i = j;
+    }
+    const firstHigh = (t0, t1) => {
+      const i0 = lowerBound(times, t0), i1 = lowerBound(times, t1);
+      for (let i = i0; i < i1; i++) if (high[i]) return times[i];
+      return null;
+    };
+    const findDrop = boundary => {
+      for (let r = lowerBound(runB, boundary); r < runA.length; r++) {
+        const start = Math.max(runA[r], boundary);
+        if (runB[r] - start >= cfg.drop_hold_s) return start;
+      }
+      return null;
+    };
+
+    const out = [];
+    let k = 0;
+    while (k < ws.length) {
+      const w = ws[k];
+      const start = Math.max(0, w - cfg.pre_whistle_s);
+      const reasons = [];
+      let score = 1.0, end;
+      const nxt = k + 1 < ws.length ? ws[k + 1] : null;
+      const cap = nxt !== null ? nxt - cfg.cap_before_next_s : duration;
+      let absorbedTo = k + 1;
+
+      const onset = firstHigh(w, w + cfg.onset_timeout_s);
+      if (onset === null) {
+        reasons.push("nessun_movimento"); score = 0.3;
+        end = Math.min(cap, w + cfg.onset_timeout_s + cfg.post_margin_s);
+      } else {
+        const drop = findDrop(Math.max(onset, w + cfg.min_active_s));
+        if (drop === null) {
+          end = cap; score = 0.5; reasons.push("nessun_calo_di_movimento");
+        } else {
+          end = drop + cfg.post_margin_s;
+          if (end - start > cfg.max_rally_s) {
+            if (cap < end) { end = cap; score = 0.5; reasons.push("limitato_dal_fischio"); }
+          } else {
+            while (absorbedTo < ws.length && ws[absorbedTo] < drop) absorbedTo++;
+            if (absorbedTo > k + 1) { end = ws[absorbedTo - 1] + cfg.end_whistle_s; reasons.push("fischio_di_fine"); }
+            const nxt2 = absorbedTo < ws.length ? ws[absorbedTo] : null;
+            if (nxt2 !== null && end > nxt2 - cfg.cap_before_next_s) {
+              end = Math.max(drop, nxt2 - cfg.cap_before_next_s); score = 0.7; reasons.push("limitato_dal_fischio");
+            }
+          }
+        }
+      }
+      end = Math.min(Math.max(end, start), duration);
+      if (end - start < cfg.min_rally_s) reasons.push("troppo_corto");
+      if (end - start > cfg.max_rally_s) reasons.push("troppo_lungo");
+      const dubious = reasons.some(r => r === "troppo_corto" || r === "troppo_lungo" || r === "nessun_movimento");
+      if (dubious) score = Math.min(score, 0.4);
+      out.push({ n: 0, start, end, confidence: score, confidence_level: level(score), dubious, reasons, whistle: w });
+      k = absorbedTo;
+    }
+    for (let i = 1; i < out.length; i++) {            // nessuna sovrapposizione
+      const prev = out[i - 1], cur = out[i];
+      if (prev.end > cur.start) cur.start = Math.min(prev.end, cur.end);
+    }
+    out.forEach((r, i) => { r.n = i + 1; });
+    return out;
+  }
+
+  // Ricalcolo sulle clip non corrette a mano: aggiorna solo inizio/fine/confidenza delle clip
+  // nate da un fischio (whistle) e non marcate `edited`. Restituisce i conteggi.
+  function recalc(clips, whistles, motion, bin, duration, thr, cfg) {
+    const fresh = segment(whistles, motion, bin, duration, thr, cfg);
+    const by = new Map(fresh.map(r => [Math.round(r.whistle * 100), r]));
+    const res = { updated: 0, changed: 0, frozen: 0, gone: 0, added: 0 };
+    const seen = new Set();
+    clips.forEach(c => {
+      if (c.whistle === null || c.whistle === undefined) return;
+      const f = by.get(Math.round(c.whistle * 100));
+      if (c.edited) { res.frozen++; if (f) seen.add(Math.round(c.whistle * 100)); return; }
+      if (!f) { res.gone++; return; }                // con la nuova soglia quel fischio non apre piu' un rally
+      seen.add(Math.round(c.whistle * 100));
+      if (Math.abs(c.start - f.start) > 1e-6 || Math.abs(c.end - f.end) > 1e-6) res.changed++;
+      c.start = f.start; c.end = f.end; c.confidence = f.confidence; c.confidence_level = f.confidence_level;
+      c.dubious = f.dubious; c.reasons = f.reasons.slice(); res.updated++;
+    });
+    res.added = fresh.filter(f => !seen.has(Math.round(f.whistle * 100))).length;   // nuovi rally che la soglia farebbe nascere: non aggiunti
+    return res;
+  }
+
+  return { DEFAULTS, segment, recalc };
+})();
+if (typeof module !== "undefined" && module.exports) module.exports = SegLib;
+
 const EMPTY = { empty: true, video_name: "", video_src: "", duration: 1, threshold: 0, min_clip_s: 0.5, motion: [], motion_bin: 1,
-  motion_max: 1, whistles: [], cli: {}, rallies: [], meta: {} };
+  motion_max: 1, whistles: [], seg: null, fps: null, cli: {}, rallies: [], meta: {} };
 let D = /*__DATA__*/null || EMPTY;
 const $ = id => document.getElementById(id);
 const v = $("v"), cv = $("main"), ov = $("over");
@@ -570,8 +693,12 @@ const store = {
   load() { try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } },
   clear() { try { localStorage.removeItem(KEY); } catch (e) {} },
 };
+// "corretta a mano" = inizio o fine modificati dall'utente: il ricalcolo della soglia non le tocca.
+// Nei file salvati prima di questa funzione non c'e' il dato: ogni clip gia' lavorata conta come corretta.
+const normEdited = list => { list.forEach(r => { if (!("edited" in r)) r.edited = !!r.reviewed; }); return list; };
 const saved = D.empty ? null : store.load();
 if (saved && saved.length) R = saved;
+normEdited(R);
 const scoutMeta = () => (SCOUT ? { file: SCOUT.file, team: SCOUT.team, touchList: SCOUT.touchList } : null);
 function restoreScout(m) {
   SCOUT = null;
@@ -599,7 +726,7 @@ function touch(r) { r.dubious = false; r.reasons = (r.reasons || []).filter(x =>
 function changed(rerender = true) { sorted(); refreshMatch(); store.save(); markDirty(true); if (rerender) renderRows(); draw(); stats(); renderCine(); }
 function addRally(t) {
   const r = { n: 0, start: clamp(t, 0, DUR - 1), end: clamp(t + 20, 1, DUR), confidence: 1, confidence_level: "alta",
-              dubious: false, reasons: ["aggiunto_a_mano"], whistle: null, keep: true, tag: "", reviewed: true };
+              dubious: false, reasons: ["aggiunto_a_mano"], whistle: null, keep: true, tag: "", reviewed: true, edited: true };
   R.push(r); sel = r; changed();
 }
 const chosen = () => sorted().filter(r => r.sel);
@@ -796,6 +923,7 @@ function stats() {
   const k = R.filter(r => r.keep), tot = k.reduce((s, r) => s + (r.end - r.start), 0);
   $("stats").innerHTML = "<b>" + k.length + "</b> clip tenute su " + R.length + " &middot; <b>" + (tot / 60).toFixed(1) +
     " min</b> su " + (DUR / 60).toFixed(1) + " min &middot; dubbi rimasti: " + R.filter(r => r.dubious && r.keep).length;
+  thrInfo();
   scoutBar();
 }
 let fltFor = null;
@@ -920,7 +1048,7 @@ function act(r, a) {
   if (a === "e-") r.end = clamp(r.end - 0.5, r.start + 0.5, DUR);
   if (a === "e+") r.end = clamp(r.end + 0.5, r.start + 0.5, DUR);
   if (a === "en") r.end = clamp(now, r.start + 0.5, DUR);
-  touch(r); changed();
+  r.edited = true; touch(r); changed();
   if (a[0] === "s") seek(r.start); else if (a[0] === "e") seek(Math.max(r.start, r.end - 3));
 }
 function select(r, doSeek) {
@@ -949,7 +1077,7 @@ function status() {
 }
 function markDirty(d) { dirty = d; status(); }
 const projectData = () => ({ video_name: D.video_name, duration: D.duration, threshold: D.threshold, min_clip_s: D.min_clip_s,
-  motion: D.motion, motion_bin: D.motion_bin, motion_max: D.motion_max, whistles: D.whistles });
+  motion: D.motion, motion_bin: D.motion_bin, motion_max: D.motion_max, whistles: D.whistles, seg: D.seg, fps: D.fps });
 let loadedRev = +(D.meta && D.meta.revision || 0);          // revisione del file aperto: serve a non sovrascrivere un salvataggio fatto altrove
 const toJSON = rev => JSON.stringify({ meta: Object.assign({}, D.meta, { reviewed: true, revision: rev, saved_at: new Date().toISOString() },
   SCOUT ? { scout: scoutMeta() } : {}, { project: projectData() }),
@@ -960,7 +1088,7 @@ function setProject(pj, rallies) {
   DUR = D.duration; KEY = "volleycut:" + D.video_name;
   $("vname").textContent = D.video_name; document.title = "Revisione - " + D.video_name;
   v.removeAttribute("src"); v.load(); needVideo();
-  v0 = 0; v1 = Math.min(DUR, 600);
+  v0 = 0; v1 = Math.min(DUR, 600); thrPrev = null;
 }
 async function saveFile(asNew) {
   if (MOBILE) { alert("Su telefono il salvataggio e' disattivato: salva dal computer."); return; }
@@ -999,6 +1127,7 @@ function loadText(text, name) {
   loadedRev = +(d.meta && d.meta.revision || 0);
   R = d.rallies.map(r => Object.assign({ confidence: 1, confidence_level: "alta", dubious: false, reasons: [], whistle: null, keep: true, tag: "" },
     r, { start: +r.start, end: +r.end, reasons: r.reasons || [] }));
+  normEdited(R);
   restoreScout(d.meta && d.meta.scout);
   sel = null; lastSave = name ? hhmm() : lastSave;
   if (sorted().length) { const w = v1 - v0; v0 = clamp(R[0].start - 30, 0, Math.max(0, DUR - w)); v1 = v0 + w; seek(R[0].start); }
@@ -1037,11 +1166,13 @@ function curve(g, x0, x1, t0, t1, y0, y1) {
   }
   g.lineTo(x1, y1); g.closePath(); g.fill();
 }
+let thrPrev = null;                                   // soglia provata nel campo, non ancora applicata
+const thrNow = () => (thrPrev !== null ? thrPrev : D.threshold);
 function draw() {
   const g = fit(cv), W = cv.clientWidth, H = cv.clientHeight;
   g.clearRect(0, 0, W, H);
   g.globalAlpha = .55; g.fillStyle = css("--mov"); curve(g, 0, W, v0, v1, BAND + 4, H - 16); g.globalAlpha = 1;
-  const ty = H - 16 - Math.min(1, D.threshold / D.motion_max) * (H - 16 - BAND - 4);
+  const ty = H - 16 - Math.min(1, thrNow() / D.motion_max) * (H - 16 - BAND - 4);
   g.strokeStyle = css("--dub"); g.setLineDash([4, 4]); g.beginPath(); g.moveTo(0, ty); g.lineTo(W, ty); g.stroke(); g.setLineDash([]);
   g.strokeStyle = css("--whi"); g.lineWidth = 1;
   D.whistles.forEach(w => { if (w >= v0 && w <= v1) { const x = Math.round(mx(w)) + .5; g.beginPath(); g.moveTo(x, BAND); g.lineTo(x, H - 16); g.stroke(); } });
@@ -1102,7 +1233,7 @@ window.addEventListener("mousemove", e => {
 });
 window.addEventListener("mouseup", () => {
   if (!drag) return;
-  if (drag.kind === "edge") { touch(drag.r); seek(drag.side === "s" ? drag.r.start : Math.max(drag.r.start, drag.r.end - 3)); changed(); }
+  if (drag.kind === "edge") { drag.r.edited = true; touch(drag.r); seek(drag.side === "s" ? drag.r.start : Math.max(drag.r.start, drag.r.end - 3)); changed(); }
   else if (!drag.moved) { if (drag.inside) select(drag.inside, false); seek(drag.t); }
   drag = null;
 });
@@ -1134,11 +1265,84 @@ function tick() {
 }
 v.addEventListener("seeked", draw);
 
+// ---- fotogramma attuale come immagine (JPEG, risoluzione originale del video)
+async function snapFrame() {
+  if (!v.videoWidth) { alert("Il video non e' caricato."); return; }
+  const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight;
+  let blob;
+  try {
+    c.getContext("2d").drawImage(v, 0, 0);
+    blob = await new Promise((ok, ko) => c.toBlob(b => b ? ok(b) : ko(new Error("immagine vuota")), "image/jpeg", 0.95));
+  } catch (e) {
+    alert("Il browser non permette di copiare il fotogramma dal video aperto cosi'.\nUsa \"Scegli il video...\" e indica il file: poi la foto funziona.");
+    return;
+  }
+  const t = Math.floor(v.currentTime), p = n => String(n).padStart(2, "0");
+  const name = (D.video_name || "video").replace(/\.[^.]+$/, "") + "_" + p(Math.floor(t / 3600)) + "h" + p(Math.floor(t % 3600 / 60)) + "m" + p(t % 60) + "s.jpg";
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  const st = $("status"); if (st) { const old = st.innerHTML; st.textContent = "Foto salvata: " + name; setTimeout(() => { if (st.textContent.startsWith("Foto salvata")) st.innerHTML = old; }, 4000); }
+}
+$("snap").onclick = $("csnap").onclick = snapFrame;
+
+// ---- soglia di movimento: si prova nel grafico, poi si ricalcolano le clip non corrette a mano
+function thrInfo() {
+  const n = R.filter(r => r.whistle !== null && r.whistle !== undefined);
+  const free = n.filter(r => !r.edited).length;
+  $("thr").value = (+thrNow()).toFixed(2);
+  $("thrinfo").textContent = free + " clip non corrette su " + n.length + " nate da un fischio";
+  $("recalc").disabled = D.empty || !free || !D.motion.length || !D.whistles.length;
+}
+$("thr").oninput = e => { const x = parseFloat(e.target.value); thrPrev = isFinite(x) && x >= 0 ? x : null; draw(); };
+$("recalc").onclick = () => {
+  const thr = thrNow(), seg = D.seg || SegLib.DEFAULTS;
+  const t = R.map(r => Object.assign({}, r)), res = SegLib.recalc(t, D.whistles, D.motion, D.motion_bin, DUR, thr, seg);
+  const NL = String.fromCharCode(10);
+  const msg = "Soglia " + (+thr).toFixed(2) + ": ricalcolo " + res.updated + " clip non corrette (" + res.changed + " cambiano)." +
+    (res.frozen ? NL + res.frozen + " corrette a mano restano come sono." : "") +
+    (res.gone ? NL + res.gone + " non nascerebbero piu' con questa soglia: restano come sono." : "") +
+    (res.added ? NL + res.added + " nuovi rally che la soglia farebbe nascere: non vengono aggiunti." : "") + NL + "Procedere?";
+  if (!res.updated || !confirm(msg)) return;
+  R.forEach((r, i) => { Object.assign(r, { start: t[i].start, end: t[i].end, confidence: t[i].confidence,
+    confidence_level: t[i].confidence_level, dubious: t[i].dubious, reasons: t[i].reasons }); });
+  D.threshold = thr; thrPrev = null; changed();
+};
+
+// ---- scorrimento fotogramma per fotogramma
+let fpsMeasured = null;
+const STD_FPS = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60];
+const fps = () => D.fps || fpsMeasured || 30;
+v.addEventListener("play", () => {            // se il file non dice i fotogrammi al secondo, si misurano in riproduzione
+  if (D.fps || fpsMeasured || !v.requestVideoFrameCallback) return;
+  let a = null;
+  const cb = (now, md) => {
+    if (!a) a = { p: md.presentedFrames, t: md.mediaTime };
+    else if (md.mediaTime - a.t > 0.5) {
+      const f = (md.presentedFrames - a.p) / (md.mediaTime - a.t), near = STD_FPS.reduce((b, s) => Math.abs(s - f) < Math.abs(b - f) ? s : b);
+      if (Math.abs(near - f) < 1.5) fpsMeasured = near;
+      return;
+    }
+    if (!fpsMeasured) v.requestVideoFrameCallback(cb);
+  };
+  v.requestVideoFrameCallback(cb);
+});
+function stepFrame(n) {
+  if (!v.videoWidth) return;
+  v.pause();
+  const f = fps();
+  v.currentTime = clamp((Math.floor(v.currentTime * f + 0.01) + n + 0.5) / f, 0, DUR);   // a meta' del fotogramma: niente arrotondamenti ambigui
+}
+$("fprev").onclick = $("cfprev").onclick = () => stepFrame(-1);
+$("fnext").onclick = $("cfnext").onclick = () => stepFrame(1);
+
 document.addEventListener("keydown", e => {
   if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && document.activeElement.type !== "checkbox") return;
   const k = e.key.toLowerCase(), all = sorted(), i = all.indexOf(sel);
   if ((e.ctrlKey || e.metaKey) && k === "s") { e.preventDefault(); saveFile(false); }
+  else if (k === "f" && !e.ctrlKey && !e.metaKey) snapFrame();
   else if (k === " ") { e.preventDefault(); v.paused ? v.play() : v.pause(); }
+  else if (k === "," || (e.altKey && k === "arrowleft")) { e.preventDefault(); stepFrame(-1); }
+  else if (k === "." || (e.altKey && k === "arrowright")) { e.preventDefault(); stepFrame(1); }
   else if (k === "arrowleft") { e.preventDefault(); seek(v.currentTime - (e.shiftKey ? 1 : 5)); }
   else if (k === "arrowright") { e.preventDefault(); seek(v.currentTime + (e.shiftKey ? 1 : 5)); }
   else if (cine && (k === "n" || k === "p")) stepClip(k === "n" ? 1 : -1);

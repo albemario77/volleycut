@@ -89,6 +89,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
       <div class="row" id="thrrow">
         <label title="Linea tratteggiata arancione nel grafico del movimento. Sopra = gioco, sotto = campo fermo">Soglia di movimento
           <input type="number" id="thr" step="0.1" min="0" style="width:5.5em"></label>
+        <button id="zbtn" title="Scegli le zone dell'immagine dove si gioca: il movimento si misura solo li'">Zone&hellip;</button>
         <button id="recalc" title="Ricalcola inizio e fine delle clip che non hai corretto a mano; le altre restano come sono">Ricalcola le clip non corrette</button>
         <span class="mut" id="thrinfo"></span>
       </div>
@@ -203,6 +204,16 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
   <h2>Scout caricato</h2>
   <div id="sbody"></div>
   <div class="row"><button class="pri" id="sclose">Chiudi</button></div>
+</dialog>
+<dialog id="zdlg" style="max-width:780px">
+  <h2>Zone dove si gioca</h2>
+  <p class="mut">Il movimento si misura solo nelle zone scelte (panchina e pubblico non contano). Clic o trascinamento per accendere o spegnere le zone.
+    Si vede il fotogramma del video al momento dell'apertura: scegli prima un istante in cui si vede il campo.</p>
+  <canvas id="zcv" style="width:100%;max-width:720px;cursor:pointer;touch-action:none"></canvas>
+  <div class="row"><span class="mut" id="zinfo"></span>
+    <button id="zsug" title="Propone le zone che distinguono meglio gioco e pausa, in base alle clip tenute">Suggerisci</button>
+    <button id="zall">Tutta l'immagine</button><button id="znone">Azzera</button></div>
+  <div class="row"><button class="pri" id="zok">Applica</button><button id="zno">Annulla</button></div>
 </dialog>
 <dialog id="tdlg">
   <h2>Etichette dallo scout</h2>
@@ -665,12 +676,67 @@ const SegLib = (function () {
     return res;
   }
 
-  return { DEFAULTS, segment, recalc };
+  // ---- zone dell'immagine: il movimento si misura solo dove si gioca ----
+  // cells: { rows, cols, bin, scale, data: [per zona, interi = valore * scale] }; zones: indici (vuoto/null = tutte)
+  function zonesSeries(cells, zones) {
+    const all = cells.data.map((_, k) => k), idx = zones && zones.length ? zones : all;
+    const n = cells.data[0].length, out = new Array(n).fill(0);
+    idx.forEach(k => { const d = cells.data[k]; for (let i = 0; i < n; i++) out[i] += d[i]; });
+    return out.map(x => x / idx.length / cells.scale);
+  }
+
+  // soglia automatica: stessa di activity_threshold() in segmentation.py (separazione di Otsu su 128 classi)
+  function autoThreshold(series, autoFrac) {
+    const frac = autoFrac === undefined ? 0.25 : autoFrac, bins = 128;
+    let lo = Infinity, hi = -Infinity;
+    series.forEach(x => { if (x < lo) lo = x; if (x > hi) hi = x; });
+    if (!(hi > lo)) return lo;
+    const w = (hi - lo) / bins, hist = new Array(bins).fill(0);
+    series.forEach(x => { hist[Math.min(bins - 1, Math.floor((x - lo) / w))]++; });
+    const centers = hist.map((_, i) => lo + w * (i + 0.5)), total = series.length;
+    let sumAll = 0; hist.forEach((c, i) => { sumAll += c * centers[i]; });
+    let best = -1, bestV = -Infinity, w0 = 0, s0 = 0, m0b = 0, m1b = 0;
+    for (let i = 0; i < bins; i++) {
+      w0 += hist[i]; s0 += hist[i] * centers[i];
+      const w1 = total - w0, m0 = s0 / Math.max(w0, 1), m1 = (sumAll - s0) / Math.max(w1, 1), v = w0 * w1 * (m0 - m1) * (m0 - m1);
+      if (v > bestV) { bestV = v; best = i; m0b = m0; m1b = m1; }
+    }
+    return m0b + frac * (m1b - m0b);
+  }
+
+  // Zone che separano meglio gioco e pausa, in base alle clip tenute (dentro la clip, senza 3 s di ingresso e 4 di coda,
+  // contro fuori dalla clip con 3 s di margine). Restituisce { scores, zones } oppure null se i dati non bastano.
+  function suggestZones(cells, clips, k) {
+    const kept = clips.filter(c => c.keep !== false), n = cells.data[0].length, bin = cells.bin;
+    const play = new Array(n).fill(false), pause = new Array(n).fill(true);
+    kept.forEach(c => {
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) * bin;
+        if (t >= c.start + 3 && t <= c.end - 4) play[i] = true;
+        if (t >= c.start - 3 && t <= c.end + 3) pause[i] = false;
+      }
+    });
+    const np = play.filter(Boolean).length, nq = pause.filter(Boolean).length;
+    if (kept.length < 3 || np < 10 || nq < 10) return null;
+    const scores = cells.data.map(d => {
+      let sp = 0, sq = 0;
+      for (let i = 0; i < n; i++) { if (play[i]) sp += d[i]; if (pause[i]) sq += d[i]; }
+      const mp = sp / np, mq = sq / nq; let vp = 0, vq = 0;
+      for (let i = 0; i < n; i++) { if (play[i]) vp += (d[i] - mp) * (d[i] - mp); if (pause[i]) vq += (d[i] - mq) * (d[i] - mq); }
+      vp /= np; vq /= nq;
+      const sd = Math.sqrt((vp + vq) / 2);
+      return sd > 0 ? (mp - mq) / sd : 0;
+    });
+    const order = scores.map((s, i) => i).sort((a, b) => scores[b] - scores[a]);
+    return { scores, zones: order.slice(0, k || 6).filter(i => scores[i] > 0) };
+  }
+
+  return { DEFAULTS, segment, recalc, zonesSeries, autoThreshold, suggestZones };
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = SegLib;
 
 const EMPTY = { empty: true, video_name: "", video_src: "", duration: 1, threshold: 0, min_clip_s: 0.5, motion: [], motion_bin: 1,
-  motion_max: 1, whistles: [], seg: null, fps: null, cli: {}, rallies: [], meta: {} };
+  motion_max: 1, whistles: [], seg: null, fps: null, cells: null, zones: null, cli: {}, rallies: [], meta: {} };
 let D = /*__DATA__*/null || EMPTY;
 const $ = id => document.getElementById(id);
 const v = $("v"), cv = $("main"), ov = $("over");
@@ -1077,7 +1143,8 @@ function status() {
 }
 function markDirty(d) { dirty = d; status(); }
 const projectData = () => ({ video_name: D.video_name, duration: D.duration, threshold: D.threshold, min_clip_s: D.min_clip_s,
-  motion: D.motion, motion_bin: D.motion_bin, motion_max: D.motion_max, whistles: D.whistles, seg: D.seg, fps: D.fps });
+  motion: D.motion, motion_bin: D.motion_bin, motion_max: D.motion_max, whistles: D.whistles, seg: D.seg, fps: D.fps,
+  cells: D.cells, zones: D.zones });
 let loadedRev = +(D.meta && D.meta.revision || 0);          // revisione del file aperto: serve a non sovrascrivere un salvataggio fatto altrove
 const toJSON = rev => JSON.stringify({ meta: Object.assign({}, D.meta, { reviewed: true, revision: rev, saved_at: new Date().toISOString() },
   SCOUT ? { scout: scoutMeta() } : {}, { project: projectData() }),
@@ -1123,6 +1190,7 @@ function loadText(text, name) {
   if (dirty && !confirm("Ci sono modifiche non salvate su file. Aprire comunque e sostituirle?")) return false;
   const pj = d.meta && d.meta.project;
   if (pj && (D.empty || pj.video_name !== D.video_name)) setProject(pj, d.rallies);
+  else if (pj) { ["threshold", "motion", "motion_bin", "motion_max", "cells", "zones", "seg", "fps"].forEach(k => { if (k in pj) D[k] = pj[k]; }); thrPrev = null; }
   else if (D.empty) { alert("Questo file non contiene i dati della partita (movimento, fischi). Aprilo da review.html, salva, e poi riaprilo qui."); return false; }
   loadedRev = +(d.meta && d.meta.revision || 0);
   R = d.rallies.map(r => Object.assign({ confidence: 1, confidence_level: "alta", dubious: false, reasons: [], whistle: null, keep: true, tag: "" },
@@ -1290,7 +1358,10 @@ function thrInfo() {
   const n = R.filter(r => r.whistle !== null && r.whistle !== undefined);
   const free = n.filter(r => !r.edited).length;
   $("thr").value = (+thrNow()).toFixed(2);
-  $("thrinfo").textContent = free + " clip non corrette su " + n.length + " nate da un fischio";
+  $("thrinfo").textContent = free + " clip non corrette su " + n.length + " nate da un fischio" +
+    (D.zones && D.zones.length ? " · zone: " + D.zones.length + " su " + (D.cells ? D.cells.rows * D.cells.cols : "?") : "");
+  $("zbtn").disabled = D.empty || !D.cells;
+  $("zbtn").title = D.cells ? "Scegli le zone dell'immagine dove si gioca: il movimento si misura solo li'" : "Questa partita non ha il movimento per zona: rifai l'analisi con la versione nuova";
   $("recalc").disabled = D.empty || !free || !D.motion.length || !D.whistles.length;
 }
 $("thr").oninput = e => { const x = parseFloat(e.target.value); thrPrev = isFinite(x) && x >= 0 ? x : null; draw(); };
@@ -1306,6 +1377,54 @@ $("recalc").onclick = () => {
   R.forEach((r, i) => { Object.assign(r, { start: t[i].start, end: t[i].end, confidence: t[i].confidence,
     confidence_level: t[i].confidence_level, dubious: t[i].dubious, reasons: t[i].reasons }); });
   D.threshold = thr; thrPrev = null; changed();
+};
+
+// ---- zone dell'immagine
+let zsel = new Set(), zscores = null, zpaint = null;
+const zg = $("zcv").getContext("2d");
+function zDraw() {
+  const cv0 = $("zcv"), w = cv0.width, h = cv0.height, rows = D.cells.rows, cols = D.cells.cols;
+  zg.fillStyle = "#222"; zg.fillRect(0, 0, w, h);
+  try { if (v.videoWidth) zg.drawImage(v, 0, 0, w, h); } catch (e) { /* senza fotogramma: sfondo scuro */ }
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const k = r * cols + c, x = c * w / cols, y = r * h / rows, cw = w / cols, ch = h / rows, on = zsel.has(k);
+    zg.fillStyle = on ? "rgba(31,111,235,.28)" : "rgba(0,0,0,.5)"; zg.fillRect(x, y, cw, ch);
+    zg.strokeStyle = on ? "#5b9bff" : "rgba(255,255,255,.25)"; zg.lineWidth = on ? 2 : 1; zg.strokeRect(x + .5, y + .5, cw - 1, ch - 1);
+    if (zscores) { zg.fillStyle = "#fff"; zg.font = "13px system-ui"; zg.fillText(zscores[k].toFixed(1), x + 5, y + 16); }
+  }
+  $("zinfo").textContent = zsel.size + " zone su " + rows * cols + (zscores ? " · i numeri dicono quanto la zona distingue gioco e pausa" : "");
+}
+const zCell = e => {
+  const b = $("zcv").getBoundingClientRect(), cols = D.cells.cols, rows = D.cells.rows;
+  const c = clamp(Math.floor((e.clientX - b.left) / b.width * cols), 0, cols - 1), r = clamp(Math.floor((e.clientY - b.top) / b.height * rows), 0, rows - 1);
+  return r * cols + c;
+};
+$("zcv").onpointerdown = e => { $("zcv").setPointerCapture(e.pointerId); const k = zCell(e); zpaint = !zsel.has(k); if (zpaint) zsel.add(k); else zsel.delete(k); zDraw(); };
+$("zcv").onpointermove = e => { if (zpaint === null) return; const k = zCell(e); if (zpaint) zsel.add(k); else zsel.delete(k); zDraw(); };
+$("zcv").onpointerup = () => { zpaint = null; };
+$("zbtn").onclick = () => {
+  if (!D.cells) return;
+  const cv0 = $("zcv"), ar = v.videoWidth ? v.videoHeight / v.videoWidth : 9 / 16;
+  cv0.width = 720; cv0.height = Math.round(720 * ar);
+  const total = D.cells.rows * D.cells.cols;
+  zsel = new Set(D.zones && D.zones.length ? D.zones : Array.from({ length: total }, (_, i) => i)); zscores = null;
+  $("zdlg").showModal(); zDraw();
+};
+$("zall").onclick = () => { zsel = new Set(Array.from({ length: D.cells.rows * D.cells.cols }, (_, i) => i)); zDraw(); };
+$("znone").onclick = () => { zsel = new Set(); zDraw(); };
+$("zsug").onclick = () => {
+  const s = SegLib.suggestZones(D.cells, R, 6);
+  if (!s || !s.zones.length) { alert("Servono almeno 3 clip tenute, con tempo di gioco e di pausa, per proporre le zone."); return; }
+  zsel = new Set(s.zones); zscores = s.scores; zDraw();
+};
+$("zno").onclick = () => $("zdlg").close();
+$("zok").onclick = () => {
+  const total = D.cells.rows * D.cells.cols, zones = zsel.size && zsel.size < total ? Array.from(zsel).sort((a, b) => a - b) : null;
+  const ser = SegLib.zonesSeries(D.cells, zones), sorted = ser.slice().sort((a, b) => a - b);
+  D.zones = zones; D.motion = ser.map(x => Math.round(x * 1000) / 1000); D.motion_bin = D.cells.bin;
+  D.motion_max = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.995))] || 1;
+  D.threshold = SegLib.autoThreshold(ser, (D.seg && D.seg.auto_frac) || 0.25); thrPrev = null;
+  $("zdlg").close(); changed();
 };
 
 // ---- scorrimento fotogramma per fotogramma
@@ -1336,6 +1455,7 @@ $("fprev").onclick = $("cfprev").onclick = () => stepFrame(-1);
 $("fnext").onclick = $("cfnext").onclick = () => stepFrame(1);
 
 document.addEventListener("keydown", e => {
+  if ($("zdlg").open) return;
   if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && document.activeElement.type !== "checkbox") return;
   const k = e.key.toLowerCase(), all = sorted(), i = all.indexOf(sel);
   if ((e.ctrlKey || e.metaKey) && k === "s") { e.preventDefault(); saveFile(false); }

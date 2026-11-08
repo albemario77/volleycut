@@ -666,13 +666,25 @@ const SegLib = (function () {
       if (c.whistle === null || c.whistle === undefined) return;
       const f = by.get(Math.round(c.whistle * 100));
       if (c.edited) { res.frozen++; if (f) seen.add(Math.round(c.whistle * 100)); return; }
-      if (!f) { res.gone++; return; }                // con la nuova soglia quel fischio non apre piu' un rally
+      if (!f) { c.drop = true; res.gone++; return; } // quel fischio non apre piu' un rally (e' dentro un'altra clip): la clip va tolta
       seen.add(Math.round(c.whistle * 100));
       if (Math.abs(c.start - f.start) > 1e-6 || Math.abs(c.end - f.end) > 1e-6) res.changed++;
       c.start = f.start; c.end = f.end; c.confidence = f.confidence; c.confidence_level = f.confidence_level;
       c.dubious = f.dubious; c.reasons = f.reasons.slice(); res.updated++;
     });
     res.added = fresh.filter(f => !seen.has(Math.round(f.whistle * 100))).length;   // nuovi rally che la soglia farebbe nascere: non aggiunti
+    // le clip ricalcolate non devono entrare in quelle corrette a mano (ne' in altre rimaste): si accorciano loro
+    const live = clips.filter(c => !c.drop).sort((a, b) => a.start - b.start);
+    res.trimmed = 0;
+    for (let i = 1; i < live.length; i++) {
+      const prev = live[i - 1], cur = live[i];
+      if (prev.end <= cur.start) continue;
+      const free = c => !c.edited && c.whistle !== null && c.whistle !== undefined;
+      if (free(cur)) cur.start = Math.min(prev.end, cur.end);
+      else if (free(prev)) prev.end = Math.max(cur.start, prev.start);
+      else continue;
+      res.trimmed++;
+    }
     return res;
   }
 
@@ -1371,11 +1383,13 @@ $("recalc").onclick = () => {
   const NL = String.fromCharCode(10);
   const msg = "Soglia " + (+thr).toFixed(2) + ": ricalcolo " + res.updated + " clip non corrette (" + res.changed + " cambiano)." +
     (res.frozen ? NL + res.frozen + " corrette a mano restano come sono." : "") +
-    (res.gone ? NL + res.gone + " non nascerebbero piu' con questa soglia: restano come sono." : "") +
+    (res.gone ? NL + res.gone + " non nascerebbero piu' con questa soglia (il loro fischio cade dentro un'altra clip): vengono tolte." : "") +
+    (res.trimmed ? NL + res.trimmed + " accorciate per non sovrapporsi a una vicina." : "") +
     (res.added ? NL + res.added + " nuovi rally che la soglia farebbe nascere: non vengono aggiunti." : "") + NL + "Procedere?";
   if (!res.updated || !confirm(msg)) return;
   R.forEach((r, i) => { Object.assign(r, { start: t[i].start, end: t[i].end, confidence: t[i].confidence,
     confidence_level: t[i].confidence_level, dubious: t[i].dubious, reasons: t[i].reasons }); });
+  R = R.filter((r, i) => !t[i].drop); sel = null;
   D.threshold = thr; thrPrev = null; changed();
 };
 

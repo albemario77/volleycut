@@ -61,7 +61,9 @@ textarea{width:100%;font:12px/1.4 Consolas,monospace;color:var(--fg);background:
 #cine{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 360px;background:var(--bg)}
 #cine[hidden]{display:none}
 #cstage{display:flex;flex-direction:column;min-height:0;padding:10px 16px;gap:6px}
-#cvid{flex:1;min-height:0;background:#000;border-radius:6px;display:flex}
+#cvid{flex:1;min-height:0;background:#000;border-radius:6px;display:flex;position:relative}
+body.cine #vzc{bottom:0;height:100%;clip-path:none}
+body.cine #vzoom{bottom:0}
 #cvid video{width:100%;height:100%;max-height:none;object-fit:contain;cursor:pointer;border-radius:6px}
 #cpanel{border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;padding:8px}
 #cpanel #scflt{gap:6px}#cpanel #scflt select{flex:1 1 45%;min-width:0}#cpanel #scflt>.mut:first-child{flex:1 0 100%}
@@ -903,7 +905,8 @@ function cineTick() {
 function setCine(on) {
   cine = on; document.body.classList.toggle("cine", on); $("cine").hidden = !on;
   v.controls = !on;
-  (on ? $("cvid") : $("vwrap")).prepend(v);
+  (on ? $("cvid") : $("vbox")).prepend(v);
+  v.after($("vzc"), $("vzoom"));                                   // lo zoom segue il video
   if (on) $("cpanel").insertBefore($("scflt"), $("clist")); else $("scbar").after($("scflt"));     // i filtri scout seguono la vista
   if (on) { if (!sel && playlist().length) sel = playlist()[0]; renderCine(); } else draw();
 }

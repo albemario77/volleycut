@@ -13,7 +13,10 @@ body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,Segoe
 #top{flex:none;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 16px}
 #vwrap{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
 video{max-height:26vh;max-width:100%;background:#000;border-radius:6px}
-#vbox{display:flex;flex-direction:column;max-width:100%}
+#vbox{display:flex;flex-direction:column;max-width:100%;position:relative}
+#vzoom{position:absolute;left:0;right:0;top:0;bottom:60px;touch-action:none;cursor:zoom-in}
+#vzoom.on{cursor:grab}
+#vzoom.drag{cursor:grabbing}
 #v{height:var(--vh,26vh);max-height:none}
 #vgrip{height:12px;cursor:ns-resize;touch-action:none;display:flex;align-items:center;justify-content:center}
 #vgrip::after{content:"";width:48px;height:4px;border-radius:2px;background:var(--line)}
@@ -75,7 +78,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
 <body>
 <div id="top">
   <div id="vwrap">
-    <div id="vbox"><video id="v" controls preload="metadata"></video>
+    <div id="vbox"><video id="v" controls preload="metadata"></video><div id="vzoom" title="Rotella: zoom sulla zona. Trascina: sposta. Doppio clic: immagine intera. Clic: play/pausa"></div>
       <div id="vgrip" title="Trascina per ingrandire o ridurre il video (doppio clic: misura iniziale)"></div></div>
     <div id="side">
       <h1>Revisione rally &mdash; <span id="vname"></span></h1>
@@ -85,6 +88,9 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
       <div class="row">
         <label><input type="checkbox" id="preview"> Anteprima senza tagli (salta i tempi morti)</label>
       </div>
+      <div class="row" id="zoomrow">Zoom video
+        <button id="zout" title="Riduci">&minus;</button><button id="zin" title="Ingrandisci">+</button><button id="zreset" title="Immagine intera (Z)">1:1</button>
+        <span class="mut" id="zoomval"></span><span class="mut">rotella sul video, trascina per spostarti</span></div>
       <div class="row" id="stats"></div>
       <div class="row" id="thrrow">
         <label title="Linea tratteggiata arancione nel grafico del movimento. Sopra = gioco, sotto = campo fermo">Soglia di movimento
@@ -149,6 +155,8 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
     <select id="fplayer" title="Giocatore: clip in cui ha toccato la palla"></select>
     <select id="fskill" title="Fondamentale"></select>
     <select id="fgrade" title="Voto del tocco"></select>
+    <select id="fpos" title="Posizione in campo del giocatore al momento del tocco (P1-P6)"></select>
+    <select id="frot" title="Rotazione: posizione del palleggiatore a inizio rally (P1-P6)"></select>
     <select id="fwon" title="Chi ha segnato il punto"></select>
     <button class="sm" id="fclear">azzera</button>
     <span class="mut" id="fcount"></span>
@@ -1030,7 +1038,7 @@ function scoutBar() {
 
 // ---- tabella
 // ---- filtri per scout (valgono per tabella, vista cinema e pulsanti di selezione)
-const FLT = { set: "", player: "", skill: "", grade: "", won: "" };
+const FLT = { set: "", player: "", skill: "", grade: "", pos: "", rot: "", won: "" };
 const fltOn = () => Object.values(FLT).some(Boolean);
 function passScout(r) {
   if (!SCOUT || !fltOn()) return true;
@@ -1038,8 +1046,10 @@ function passScout(r) {
   if (!p) return false;
   if (FLT.set && String(p.set) !== FLT.set) return false;
   if (FLT.won === "err" ? !p.missing : FLT.won && p.winner !== FLT.won) return false;
-  if (FLT.player || FLT.skill || FLT.grade) {
-    return p.touches.some(t => (!FLT.player || t.cognome + "|" + t.numero === FLT.player) && (!FLT.skill || t.tipo === FLT.skill) && (!FLT.grade || t.voto === FLT.grade));
+  if (FLT.rot && !p.touches.some(t => t.posP === FLT.rot)) return false;          // la rotazione e' la stessa per tutto il punto
+  if (FLT.player || FLT.skill || FLT.grade || FLT.pos) {
+    return p.touches.some(t => (!FLT.player || t.cognome + "|" + t.numero === FLT.player) && (!FLT.skill || t.tipo === FLT.skill) &&
+      (!FLT.grade || t.voto === FLT.grade) && (!FLT.pos || t.posG === FLT.pos));
   }
   return true;
 }
@@ -1058,6 +1068,9 @@ function fillFilters() {
   const order = ["Battuta", "Ricezione", "Alzata", "Attacco", "Muro", "Difesa"], sk = uniq(tc.map(t => t.tipo));
   opts("fskill", "tutti i fondamentali", sk.sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99 || a.localeCompare(b)).map(s => [s, s]));
   opts("fgrade", "tutti i voti", uniq(tc.map(t => t.voto)).filter(Boolean).sort().map(g => [g, g]));
+  const byPos = (a, b) => a.localeCompare(b, "it", { numeric: true });
+  opts("fpos", "ogni posizione", uniq(tc.map(t => t.posG)).filter(Boolean).sort(byPos).map(x => [x, "Posizione " + x]));
+  opts("frot", "ogni rotazione", uniq(tc.map(t => t.posP)).filter(Boolean).sort(byPos).map(x => [x, "Rotazione " + x]));
   opts("fwon", "chiunque segni", [["loc", "segnano i locali"], ["osp", "segnano gli ospiti"], ["err", "errore avversario"]]);
 }
 function applyFilters() {
@@ -1065,7 +1078,7 @@ function applyFilters() {
   const n = R.filter(r => isVisible(r)).length;
   $("fcount").textContent = fltOn() ? n + " clip corrispondono" : "";
 }
-["fset", "fplayer", "fskill", "fgrade", "fwon"].forEach(id => { $(id).dataset.k = { fset: "set", fplayer: "player", fskill: "skill", fgrade: "grade", fwon: "won" }[id];
+["fset", "fplayer", "fskill", "fgrade", "fpos", "frot", "fwon"].forEach(id => { $(id).dataset.k = { fset: "set", fplayer: "player", fskill: "skill", fgrade: "grade", fpos: "pos", frot: "rot", fwon: "won" }[id];
   $(id).onchange = e => { FLT[e.target.dataset.k] = e.target.value; applyFilters(); }; });
 $("fclear").onclick = () => { Object.keys(FLT).forEach(k => { FLT[k] = ""; }); fillFilters(); applyFilters(); };
 
@@ -1097,7 +1110,7 @@ $("tgo").onclick = () => {
 function scoutCell(r) {
   if (!SCOUT || !MATCH) return "<td></td>";
   const p = r.sp ? SCOUT.points[r.sp - 1] : null, sus = MATCH.suspects.has(r);
-  const lab = p ? ScoutLib.pointLabel(p) + (p.missing ? " &middot; err. avv." : " &middot; " + p.touches.length + " tocchi") +
+  const lab = p ? ScoutLib.pointLabel(p) + (p.missing ? " &middot; err. avv." : " &middot; " + p.touches.length + " tocchi" + (p.touches[0].posP ? " &middot; rot " + p.touches[0].posP : "")) +
     (p.winner ? (p.winner === "loc" ? " &#9650;" : " &#9660;") : "") : "";
   return '<td class="sc' + (p && MATCH.dup.has(p.i) ? " dup" : "") + '"><input type="number" class="sp" min="1" max="' + SCOUT.points.length +
     '" value="' + (r.sp || "") + '"> <span' + (sus ? ' class="sus" title="Durata e numero di tocchi non tornano: controlla l\'abbinamento"' : "") + ">" +
@@ -1358,13 +1371,61 @@ function tick() {
 }
 v.addEventListener("seeked", draw);
 
+
+// ---- zoom sulla zona del video (solo visivo: object-view-box ritaglia l'immagine, i comandi del video restano)
+const Z = { s: 1, cx: 0.5, cy: 0.5 };
+const zoomOK = !!(window.CSS && CSS.supports && CSS.supports("object-view-box", "inset(0%)"));
+function zoomApply() {
+  const hw = 0.5 / Z.s;
+  Z.cx = clamp(Z.cx, hw, 1 - hw); Z.cy = clamp(Z.cy, hw, 1 - hw);
+  v.style.objectViewBox = Z.s > 1 ? "inset(" + (Z.cy - hw) * 100 + "% " + (1 - Z.cx - hw) * 100 + "% " + (1 - Z.cy - hw) * 100 + "% " + (Z.cx - hw) * 100 + "%)" : "";
+  $("zoomval").textContent = Z.s > 1 ? "×" + Z.s.toFixed(1) : "";
+  $("vzoom").classList.toggle("on", Z.s > 1);
+}
+// rettangolo dell'immagine dentro il riquadro del video (object-fit: contain)
+function zoomRect() {
+  const bw = v.clientWidth, bh = v.clientHeight, va = v.videoWidth && v.videoHeight ? v.videoWidth / v.videoHeight : 16 / 9;
+  const cw = bw / bh > va ? bh * va : bw, ch = bw / bh > va ? bh : bw / va;
+  return { cw, ch, ox: (bw - cw) / 2, oy: (bh - ch) / 2 };
+}
+function zoomTo(s2, fx, fy) {                                   // fx, fy: punto dello schermo (0-1 nell'immagine visibile) che resta fermo
+  const hw = 0.5 / Z.s, px = Z.cx - hw + fx / Z.s, py = Z.cy - hw + fy / Z.s;
+  Z.s = clamp(s2, 1, 8);
+  if (Z.s === 1) { Z.cx = Z.cy = 0.5; } else { Z.cx = px + (0.5 - fx) / Z.s; Z.cy = py + (0.5 - fy) / Z.s; }
+  zoomApply();
+}
+if (!zoomOK) { $("zoomrow").hidden = true; $("vzoom").style.display = "none"; }
+else {
+  const zv = $("vzoom"), pt = e => { const r = zv.getBoundingClientRect(), g = zoomRect();
+    return { fx: clamp((e.clientX - r.left - g.ox) / g.cw, 0, 1), fy: clamp((e.clientY - r.top - g.oy) / g.ch, 0, 1), g }; };
+  zv.addEventListener("wheel", e => { e.preventDefault(); const q = pt(e); zoomTo(Z.s * (e.deltaY < 0 ? 1.25 : 0.8), q.fx, q.fy); }, { passive: false });
+  zv.addEventListener("pointerdown", e => {
+    const x0 = e.clientX, y0 = e.clientY, c0 = [Z.cx, Z.cy], g = zoomRect(); let moved = false;
+    zv.setPointerCapture(e.pointerId);
+    zv.onpointermove = m => {
+      if (Z.s <= 1) return;
+      if (Math.abs(m.clientX - x0) + Math.abs(m.clientY - y0) > 4) { moved = true; zv.classList.add("drag"); }
+      if (moved) { Z.cx = c0[0] - (m.clientX - x0) / g.cw / Z.s; Z.cy = c0[1] - (m.clientY - y0) / g.ch / Z.s; zoomApply(); }
+    };
+    zv.onpointerup = () => {
+      zv.onpointermove = zv.onpointerup = null; zv.classList.remove("drag");
+      if (!moved) { if (cine) $("cplay").click(); else if (v.paused) v.play(); else v.pause(); }      // un clic breve = play/pausa
+    };
+  });
+  zv.addEventListener("dblclick", () => zoomTo(1, 0.5, 0.5));
+  $("zin").onclick = () => zoomTo(Z.s * 1.5, 0.5, 0.5);
+  $("zout").onclick = () => zoomTo(Z.s / 1.5, 0.5, 0.5);
+  $("zreset").onclick = () => zoomTo(1, 0.5, 0.5);
+}
+
 // ---- fotogramma attuale come immagine (JPEG, risoluzione originale del video)
 async function snapFrame() {
   if (!v.videoWidth) { alert("Il video non e' caricato."); return; }
-  const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight;
+  const hw = 0.5 / Z.s, zw = Math.round(v.videoWidth * 2 * hw), zh = Math.round(v.videoHeight * 2 * hw);   // zona ingrandita (o tutta l'immagine)
+  const c = document.createElement("canvas"); c.width = zw; c.height = zh;
   let blob;
   try {
-    c.getContext("2d").drawImage(v, 0, 0);
+    c.getContext("2d").drawImage(v, (Z.cx - hw) * v.videoWidth, (Z.cy - hw) * v.videoHeight, zw, zh, 0, 0, zw, zh);
     blob = await new Promise((ok, ko) => c.toBlob(b => b ? ok(b) : ko(new Error("immagine vuota")), "image/jpeg", 0.95));
   } catch (e) {
     alert("Il browser non permette di copiare il fotogramma dal video aperto cosi'.\nUsa \"Scegli il video...\" e indica il file: poi la foto funziona.");
@@ -1488,6 +1549,7 @@ document.addEventListener("keydown", e => {
   const k = e.key.toLowerCase(), all = sorted(), i = all.indexOf(sel);
   if ((e.ctrlKey || e.metaKey) && k === "s") { e.preventDefault(); saveFile(false); }
   else if (k === "f" && !e.ctrlKey && !e.metaKey) snapFrame();
+  else if (k === "z" && !e.ctrlKey && !e.metaKey) zoomTo(1, 0.5, 0.5);
   else if (k === " ") { e.preventDefault(); v.paused ? v.play() : v.pause(); }
   else if (k === "," || (e.altKey && k === "arrowleft")) { e.preventDefault(); stepFrame(-1); }
   else if (k === "." || (e.altKey && k === "arrowright")) { e.preventDefault(); stepFrame(1); }

@@ -662,7 +662,7 @@ const SegLib = (function () {
 
   // Ricalcolo sulle clip non corrette a mano: aggiorna solo inizio/fine/confidenza delle clip
   // nate da un fischio (whistle) e non marcate `edited`. Restituisce i conteggi.
-  function recalc(clips, whistles, motion, bin, duration, thr, cfg) {
+  function recalc(clips, whistles, motion, bin, duration, thr, cfg, deleted) {
     const fresh = segment(whistles, motion, bin, duration, thr, cfg);
     const by = new Map(fresh.map(r => [Math.round(r.whistle * 100), r]));
     const res = { updated: 0, changed: 0, frozen: 0, gone: 0, added: 0 };
@@ -677,9 +677,13 @@ const SegLib = (function () {
       c.start = f.start; c.end = f.end; c.confidence = f.confidence; c.confidence_level = f.confidence_level;
       c.dubious = f.dubious; c.reasons = f.reasons.slice(); res.updated++;
     });
-    res.added = fresh.filter(f => !seen.has(Math.round(f.whistle * 100))).length;   // nuovi rally che la soglia farebbe nascere: non aggiunti
+    const gone = new Set((deleted || []).map(w => Math.round(w * 100)));
+    const born = fresh.filter(f => !seen.has(Math.round(f.whistle * 100)));
+    res.created = born.filter(f => !gone.has(Math.round(f.whistle * 100)))
+      .map(f => Object.assign({}, f, { keep: true, tag: "", reviewed: false, edited: false }));
+    res.added = res.created.length; res.skipped = born.length - res.added;          // skipped: nuovi rally ma cancellati da te
     // le clip ricalcolate non devono entrare in quelle corrette a mano (ne' in altre rimaste): si accorciano loro
-    const live = clips.filter(c => !c.drop).sort((a, b) => a.start - b.start);
+    const live = clips.filter(c => !c.drop).concat(res.created).sort((a, b) => a.start - b.start);
     res.trimmed = 0;
     for (let i = 1; i < live.length; i++) {
       const prev = live[i - 1], cur = live[i];
@@ -690,6 +694,8 @@ const SegLib = (function () {
       else continue;
       res.trimmed++;
     }
+    res.created = res.created.filter(c => c.end - c.start >= 1);                     // una nuova schiacciata dalle vicine non serve
+    res.added = res.created.length;
     return res;
   }
 
@@ -753,7 +759,7 @@ const SegLib = (function () {
 if (typeof module !== "undefined" && module.exports) module.exports = SegLib;
 
 const EMPTY = { empty: true, video_name: "", video_src: "", duration: 1, threshold: 0, min_clip_s: 0.5, motion: [], motion_bin: 1,
-  motion_max: 1, whistles: [], seg: null, fps: null, cells: null, zones: null, cli: {}, rallies: [], meta: {} };
+  motion_max: 1, whistles: [], seg: null, fps: null, cells: null, zones: null, deleted: [], cli: {}, rallies: [], meta: {} };
 let D = /*__DATA__*/null || EMPTY;
 const $ = id => document.getElementById(id);
 const v = $("v"), cv = $("main"), ov = $("over");
@@ -771,8 +777,9 @@ const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const sorted = () => R.sort((a, b) => a.start - b.start || a.end - b.end);
 const kept = () => sorted().filter(r => r.keep);
 const store = {
-  save() { try { localStorage.setItem(KEY, JSON.stringify(R)); localStorage.setItem(KEY + ":scout", SCOUT ? JSON.stringify(scoutMeta()) : ""); } catch (e) {} },
+  save() { try { localStorage.setItem(KEY, JSON.stringify(R)); localStorage.setItem(KEY + ":scout", SCOUT ? JSON.stringify(scoutMeta()) : ""); localStorage.setItem(KEY + ":del", JSON.stringify(D.deleted || [])); } catch (e) {} },
   loadScout() { try { const s = localStorage.getItem(KEY + ":scout"); return s ? JSON.parse(s) : null; } catch (e) { return null; } },
+  loadDeleted() { try { return JSON.parse(localStorage.getItem(KEY + ":del") || "[]"); } catch (e) { return []; } },
   load() { try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } },
   clear() { try { localStorage.removeItem(KEY); } catch (e) {} },
 };
@@ -780,7 +787,7 @@ const store = {
 // Nei file salvati prima di questa funzione non c'e' il dato: ogni clip gia' lavorata conta come corretta.
 const normEdited = list => { list.forEach(r => { if (!("edited" in r)) r.edited = !!r.reviewed; }); return list; };
 const saved = D.empty ? null : store.load();
-if (saved && saved.length) R = saved;
+if (saved && saved.length) { R = saved; D.deleted = store.loadDeleted(); }
 normEdited(R);
 const scoutMeta = () => (SCOUT ? { file: SCOUT.file, team: SCOUT.team, touchList: SCOUT.touchList } : null);
 function restoreScout(m) {
@@ -1124,7 +1131,8 @@ function renderRows() {
 function act(r, a) {
   const now = v.currentTime;
   if (a === "play") { select(r, false); seek(r.start); v.play(); return; }
-  if (a === "del") { R = R.filter(x => x !== r); if (sel === r) sel = null; changed(); return; }
+  if (a === "del") { if (r.whistle !== null && r.whistle !== undefined) D.deleted = (D.deleted || []).concat([r.whistle]);   // il ricalcolo non la fa rinascere
+    R = R.filter(x => x !== r); if (sel === r) sel = null; changed(); return; }
   if (a === "s-") r.start = clamp(r.start - 0.5, 0, r.end - 0.5);
   if (a === "s+") r.start = clamp(r.start + 0.5, 0, r.end - 0.5);
   if (a === "sn") r.start = clamp(now, 0, r.end - 0.5);
@@ -1142,7 +1150,7 @@ function select(r, doSeek) {
 }
 $("onlyd").onchange = applyFilters;
 $("reset").onclick = () => { if (!D.empty && confirm("Scartare tutte le modifiche e tornare alla proposta di partenza?")) {
-  store.clear(); R = D.rallies.map(r => Object.assign({}, r)); sel = null; changed(); } };
+  store.clear(); D.deleted = []; R = D.rallies.map(r => Object.assign({}, r)); sel = null; changed(); } };
 
 // ---- salvataggio e apertura su file
 const hhmm = () => new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
@@ -1161,7 +1169,7 @@ function status() {
 function markDirty(d) { dirty = d; status(); }
 const projectData = () => ({ video_name: D.video_name, duration: D.duration, threshold: D.threshold, min_clip_s: D.min_clip_s,
   motion: D.motion, motion_bin: D.motion_bin, motion_max: D.motion_max, whistles: D.whistles, seg: D.seg, fps: D.fps,
-  cells: D.cells, zones: D.zones });
+  cells: D.cells, zones: D.zones, deleted: D.deleted || [] });
 let loadedRev = +(D.meta && D.meta.revision || 0);          // revisione del file aperto: serve a non sovrascrivere un salvataggio fatto altrove
 const toJSON = rev => JSON.stringify({ meta: Object.assign({}, D.meta, { reviewed: true, revision: rev, saved_at: new Date().toISOString() },
   SCOUT ? { scout: scoutMeta() } : {}, { project: projectData() }),
@@ -1207,7 +1215,7 @@ function loadText(text, name) {
   if (dirty && !confirm("Ci sono modifiche non salvate su file. Aprire comunque e sostituirle?")) return false;
   const pj = d.meta && d.meta.project;
   if (pj && (D.empty || pj.video_name !== D.video_name)) setProject(pj, d.rallies);
-  else if (pj) { ["threshold", "motion", "motion_bin", "motion_max", "cells", "zones", "seg", "fps"].forEach(k => { if (k in pj) D[k] = pj[k]; }); thrPrev = null; }
+  else if (pj) { ["threshold", "motion", "motion_bin", "motion_max", "cells", "zones", "seg", "fps"].forEach(k => { if (k in pj) D[k] = pj[k]; }); D.deleted = pj.deleted || []; thrPrev = null; }
   else if (D.empty) { alert("Questo file non contiene i dati della partita (movimento, fischi). Aprilo da review.html, salva, e poi riaprilo qui."); return false; }
   loadedRev = +(d.meta && d.meta.revision || 0);
   R = d.rallies.map(r => Object.assign({ confidence: 1, confidence_level: "alta", dubious: false, reasons: [], whistle: null, keep: true, tag: "" },
@@ -1384,17 +1392,18 @@ function thrInfo() {
 $("thr").oninput = e => { const x = parseFloat(e.target.value); thrPrev = isFinite(x) && x >= 0 ? x : null; draw(); };
 $("recalc").onclick = () => {
   const thr = thrNow(), seg = D.seg || SegLib.DEFAULTS;
-  const t = R.map(r => Object.assign({}, r)), res = SegLib.recalc(t, D.whistles, D.motion, D.motion_bin, DUR, thr, seg);
+  const t = R.map(r => Object.assign({}, r)), res = SegLib.recalc(t, D.whistles, D.motion, D.motion_bin, DUR, thr, seg, D.deleted);
   const NL = String.fromCharCode(10);
   const msg = "Soglia " + (+thr).toFixed(2) + ": ricalcolo " + res.updated + " clip non corrette (" + res.changed + " cambiano)." +
     (res.frozen ? NL + res.frozen + " corrette a mano restano come sono." : "") +
     (res.gone ? NL + res.gone + " non nascerebbero piu' con questa soglia (il loro fischio cade dentro un'altra clip): vengono tolte." : "") +
     (res.trimmed ? NL + res.trimmed + " accorciate per non sovrapporsi a una vicina." : "") +
-    (res.added ? NL + res.added + " nuovi rally che la soglia farebbe nascere: non vengono aggiunti." : "") + NL + "Procedere?";
-  if (!res.updated || !confirm(msg)) return;
+    (res.added ? NL + res.added + " nuovi rally che la soglia fa nascere: vengono aggiunti." : "") +
+    (res.skipped ? NL + res.skipped + " nuovi rally non vengono aggiunti perche' li avevi cancellati." : "") + NL + "Procedere?";
+  if (!(res.updated || res.added || res.gone) || !confirm(msg)) return;
   R.forEach((r, i) => { Object.assign(r, { start: t[i].start, end: t[i].end, confidence: t[i].confidence,
     confidence_level: t[i].confidence_level, dubious: t[i].dubious, reasons: t[i].reasons }); });
-  R = R.filter((r, i) => !t[i].drop); sel = null;
+  R = R.filter((r, i) => !t[i].drop).concat(res.created); sel = null;
   D.threshold = thr; thrPrev = null; changed();
 };
 

@@ -15,6 +15,8 @@ body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,Segoe
 video{max-height:26vh;max-width:100%;background:#000;border-radius:6px}
 #vbox{display:flex;flex-direction:column;max-width:100%;position:relative}
 #vzoom{position:absolute;left:0;right:0;top:0;bottom:60px;touch-action:none;cursor:zoom-in}
+#vzc{position:absolute;left:0;top:0;right:0;bottom:12px;width:100%;height:calc(100% - 12px);display:none;pointer-events:none;clip-path:inset(0 0 48px 0);background:#000;border-radius:6px}
+#vzc.on{display:block}
 #vzoom.on{cursor:grab}
 #vzoom.drag{cursor:grabbing}
 #v{height:var(--vh,26vh);max-height:none}
@@ -78,7 +80,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
 <body>
 <div id="top">
   <div id="vwrap">
-    <div id="vbox"><video id="v" controls preload="metadata"></video><div id="vzoom" title="Rotella: zoom sulla zona. Trascina: sposta. Doppio clic: immagine intera. Clic: play/pausa"></div>
+    <div id="vbox"><video id="v" controls preload="metadata"></video><canvas id="vzc"></canvas><div id="vzoom" title="Rotella: zoom sulla zona. Trascina: sposta. Doppio clic: immagine intera. Clic: play/pausa"></div>
       <div id="vgrip" title="Trascina per ingrandire o ridurre il video (doppio clic: misura iniziale)"></div></div>
     <div id="side">
       <h1>Revisione rally &mdash; <span id="vname"></span></h1>
@@ -1353,7 +1355,7 @@ ov.addEventListener("mousedown", e => { overMove(e); const mv = ev => overMove({
 
 // ---- riproduzione, anteprima senza tagli
 function tick() {
-  if (cine) { cineTick(); requestAnimationFrame(tick); return; }
+  if (cine) { cineTick(); zoomDraw(); requestAnimationFrame(tick); return; }
   if (!v.paused && $("preview").checked) {
     const t = v.currentTime, k = kept();
     if (!k.some(r => t >= r.start - 0.05 && t < r.end)) {
@@ -1367,20 +1369,29 @@ function tick() {
     const cur = sorted().find(r => t >= r.start && t < r.end);
     if (cur && cur !== sel) { sel = cur; renderRows(); const el = document.querySelector("#rows tr.sel"); if (el) el.scrollIntoView({ block: "nearest" }); }
   }
-  draw(); requestAnimationFrame(tick);
+  zoomDraw(); draw(); requestAnimationFrame(tick);
 }
-v.addEventListener("seeked", draw);
+v.addEventListener("seeked", () => { zoomDraw(); draw(); });
 
 
-// ---- zoom sulla zona del video (solo visivo: object-view-box ritaglia l'immagine, i comandi del video restano)
+// ---- zoom sulla zona del video (solo visivo): con lo zoom attivo un riquadro sopra il video ridisegna la zona
+// ingrandita a ogni fotogramma; la fascia in basso con i comandi del video resta quella del browser.
 const Z = { s: 1, cx: 0.5, cy: 0.5 };
-const zoomOK = !!(window.CSS && CSS.supports && CSS.supports("object-view-box", "inset(0%)"));
+function zoomDraw() {
+  if (Z.s <= 1) return;
+  const c = $("vzc"), w = v.clientWidth, h = v.clientHeight, d = devicePixelRatio || 1;
+  if (c.width !== Math.round(w * d) || c.height !== Math.round(h * d)) { c.width = Math.round(w * d); c.height = Math.round(h * d); }
+  const g = c.getContext("2d"); g.setTransform(d, 0, 0, d, 0, 0); g.fillStyle = "#000"; g.fillRect(0, 0, w, h);
+  if (!v.videoWidth) return;
+  const hw = 0.5 / Z.s, r = zoomRect();
+  try { g.drawImage(v, (Z.cx - hw) * v.videoWidth, (Z.cy - hw) * v.videoHeight, 2 * hw * v.videoWidth, 2 * hw * v.videoHeight, r.ox, r.oy, r.cw, r.ch); } catch (e) { /* fotogramma non pronto */ }
+}
 function zoomApply() {
   const hw = 0.5 / Z.s;
   Z.cx = clamp(Z.cx, hw, 1 - hw); Z.cy = clamp(Z.cy, hw, 1 - hw);
-  v.style.objectViewBox = Z.s > 1 ? "inset(" + (Z.cy - hw) * 100 + "% " + (1 - Z.cx - hw) * 100 + "% " + (1 - Z.cy - hw) * 100 + "% " + (Z.cx - hw) * 100 + "%)" : "";
   $("zoomval").textContent = Z.s > 1 ? "×" + Z.s.toFixed(1) : "";
-  $("vzoom").classList.toggle("on", Z.s > 1);
+  $("vzoom").classList.toggle("on", Z.s > 1); $("vzc").classList.toggle("on", Z.s > 1);
+  zoomDraw();
 }
 // rettangolo dell'immagine dentro il riquadro del video (object-fit: contain)
 function zoomRect() {
@@ -1394,8 +1405,7 @@ function zoomTo(s2, fx, fy) {                                   // fx, fy: punto
   if (Z.s === 1) { Z.cx = Z.cy = 0.5; } else { Z.cx = px + (0.5 - fx) / Z.s; Z.cy = py + (0.5 - fy) / Z.s; }
   zoomApply();
 }
-if (!zoomOK) { $("zoomrow").hidden = true; $("vzoom").style.display = "none"; }
-else {
+{
   const zv = $("vzoom"), pt = e => { const r = zv.getBoundingClientRect(), g = zoomRect();
     return { fx: clamp((e.clientX - r.left - g.ox) / g.cw, 0, 1), fy: clamp((e.clientY - r.top - g.oy) / g.ch, 0, 1), g }; };
   zv.addEventListener("wheel", e => { e.preventDefault(); const q = pt(e); zoomTo(Z.s * (e.deltaY < 0 ? 1.25 : 0.8), q.fx, q.fy); }, { passive: false });

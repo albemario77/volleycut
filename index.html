@@ -354,7 +354,8 @@ const ScoutLib = (function () {
 
   // ---- tocchi -> punti
   // Un punto per ogni (set, k = locali + ospiti). Il punteggio e' a inizio rally, quindi k e' l'ordine del punto.
-  function buildPoints(touches, extraIssues) {
+  function buildPoints(touches, extraIssues, side) {
+    const S = side === "osp" ? "osp" : "loc", T = S === "loc" ? "osp" : "loc";   // S = la squadra dello scout, T = l'avversaria
     const issues = (extraIssues || []).slice();
     const sets = [...new Set(touches.map(t => t.set))].sort((a, b) => a - b);
     const points = [], setInfo = [];
@@ -382,28 +383,31 @@ const ScoutLib = (function () {
         list.push(g ? { set: s, n: k + 1, loc: g.loc, osp: g.osp, touches: g.touches, missing: false, winner: null }
           : { set: s, n: k + 1, loc: null, osp: null, touches: [], missing: true, winner: null });
       }
-      // punti senza righe = errore generico dell'avversario: lo vince la squadra locale
+      // punti senza righe = errore generico dell'avversario: il punto e' della squadra dello scout.
+      // Anche con piu' punti vuoti di fila il punteggio si ricostruisce: ogni vuoto e' un punto di S, quindi
+      // dal punteggio prima e dopo si capisce chi ha vinto il rally precedente (che ha le righe).
       for (let k = 0; k < n; k++) {
-        const p = list[k];
-        if (!p.missing) continue;
-        p.winner = "loc";
-        const a = list[k - 1], c = list[k + 1];
+        if (!list[k].missing) continue;
+        let k1 = k; while (k1 + 1 < n && list[k1 + 1].missing) k1++;
+        const m = k1 - k + 1, a = list[k - 1], c = list[k1 + 1], run = list.slice(k, k1 + 1);
+        run.forEach(p => { p.winner = S; });
         if (a && c && !a.missing && !c.missing) {
-          // prima del punto vuoto: il rally precedente lo ha vinto chi segna in piu' tra a e (a -> vuoto)
-          const dl = c.loc - a.loc, dosp = c.osp - a.osp;
-          if (dl + dosp !== 2 || dl < 1) {
-            issues.push({ level: "warn", msg: "Set " + s + ", punto " + p.n + ": senza righe ma non e' un errore avversario (da " + a.loc + "-" + a.osp + " a " + c.loc + "-" + c.osp + "). Da controllare." });
-            p.winner = dosp === 2 ? "osp" : null;
-            p.loc = a.loc + (dl === 2 ? 1 : 0); p.osp = a.osp + (dosp ? 1 : 0);
-            p.suspect = true;
+          const dS = c[S] - a[S], dT = c[T] - a[T];
+          if (dT >= 0 && dT <= 1 && dS >= m && dS + dT === m + 1) {
+            let sc = a[S] + (dT === 0 ? 1 : 0);                    // se il rally prima lo ha perso S, il suo punto e' dell'avversario
+            const tc = a[T] + dT;
+            run.forEach(p => { p[S] = sc++; p[T] = tc; p.recon = true; });
           } else {
-            p.loc = a.loc + (dl === 2 ? 1 : 0);
-            p.osp = a.osp + (dosp === 1 ? 1 : 0);
+            const txt = m === 1 ? "senza righe ma non e' un errore avversario" : m + " punti di fila senza righe ma non sono tutti errori avversari";
+            issues.push({ level: "warn", msg: "Set " + s + ", punto " + run[0].n + (m > 1 ? "-" + run[m - 1].n : "") + ": " + txt + " (da " + a.loc + "-" + a.osp + " a " + c.loc + "-" + c.osp + "). Da controllare." });
+            run.forEach(p => { p.suspect = true; p.winner = null; });
+            if (m === 1) { const p = run[0]; p.winner = dT === 2 ? T : null; p[S] = a[S] + (dS === 2 ? 1 : 0); p[T] = a[T] + (dT ? 1 : 0); }
           }
         } else {
-          issues.push({ level: "warn", msg: "Set " + s + ", punto " + p.n + ": piu' punti consecutivi senza righe, punteggio non ricostruibile." });
-          p.suspect = true;
+          issues.push({ level: "warn", msg: "Set " + s + ", punto " + run[0].n + ": senza righe e senza un punteggio vicino, punteggio non ricostruibile." });
+          run.forEach(p => { p.suspect = true; });
         }
+        k = k1;
       }
       // chi vince ogni punto: lo dice il punteggio del punto dopo
       for (let k = 0; k + 1 < n; k++) {
@@ -451,8 +455,9 @@ const ScoutLib = (function () {
   // `touchList` = i tocchi grezzi: e' cio' che si salva nel file corretto (non serve ricaricare l'xlsx)
   function fromTouches(team, touchList, issues) {
     if (!touchList.length) throw new Error("Lo scout non contiene nessun tocco.");
-    const b = buildPoints(touchList, issues);
-    return { team, touchList, touches: touchList.length, points: b.points, sets: b.sets, issues: b.issues, setsWon: b.setsWon };
+    const side = /^\s*ospiti/i.test(team || "") ? "osp" : "loc";      // l'intestazione dice di quale squadra sono i tocchi
+    const b = buildPoints(touchList, issues, side);
+    return { team, side, touchList, touches: touchList.length, points: b.points, sets: b.sets, issues: b.issues, setsWon: b.setsWon };
   }
 
   function loadScout(rows) {

@@ -75,6 +75,15 @@ body.cine #vzoom{bottom:0}
 .ci .tg{flex:1;overflow:hidden;text-overflow:ellipsis;color:var(--acc)}
 .ci .n{min-width:28px;color:var(--mut)}
 body.cine #top,body.cine #list{display:none}
+@media (max-width:900px){
+  /* telefono / schermo stretto: la pagina intera scorre (il riquadro in alto e' alto quanto lo schermo e l'elenco resterebbe senza spazio) */
+  body:not(.cine){height:auto;min-height:100%;overflow:auto;display:block}
+  body:not(.cine) #top{padding:8px 10px}
+  body:not(.cine) #list{overflow-x:auto;overflow-y:visible;padding:0 10px 80px}
+  body:not(.cine) thead{position:static}
+  #side{min-width:0;flex:1 1 100%}
+  #vbox{width:100%}#v{width:100%}
+}
 @media (max-width:900px){#cine{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) 240px}#cpanel{border-left:0;border-top:1px solid var(--line)}}
 kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(--card);font-size:12px}
 </style>

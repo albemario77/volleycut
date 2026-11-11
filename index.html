@@ -99,7 +99,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
         <span class="mut">Dal web il video non si carica da solo: scegli <code>video/&hellip;mp4</code> oppure la copia ridotta
         <code>lavoro/proxy.mp4</code> (stessi tempi, molto piu' leggera).</span></div>
       <div class="row">
-        <label><input type="checkbox" id="preview"> Anteprima senza tagli (salta i tempi morti)</label>
+        <label title="Con un filtro scout attivo si riproducono comunque solo le clip filtrate"><input type="checkbox" id="preview"> Anteprima senza tagli (salta i tempi morti)</label>
       </div>
       <div class="row" id="zoomrow">Zoom video
         <button id="zout" title="Riduci">&minus;</button><button id="zin" title="Ingrandisci">+</button><button id="zreset" title="Immagine intera (Z)">1:1</button>
@@ -1366,10 +1366,18 @@ ov.addEventListener("mousedown", e => { overMove(e); const mv = ev => overMove({
   window.addEventListener("mousemove", mv); window.addEventListener("mouseup", up); });
 
 // ---- riproduzione, anteprima senza tagli
+// Con un filtro scout attivo la riproduzione salta da sola da una clip filtrata alla successiva (solo quelle, tra le tenute).
+const seqOn = () => $("preview").checked || (SCOUT && fltOn());
+const seqClips = () => kept().filter(passScout);
+v.addEventListener("play", () => {
+  if (cine || !seqOn()) return;
+  const t = v.currentTime, k = seqClips();
+  if (!k.some(r => t >= r.start - 0.05 && t < r.end)) { const nx = k.find(r => r.start > t) || k[0]; if (nx) { seek(nx.start); select(nx, false); } }
+});
 function tick() {
   if (cine) { cineTick(); zoomDraw(); requestAnimationFrame(tick); return; }
-  if (!v.paused && $("preview").checked) {
-    const t = v.currentTime, k = kept();
+  if (!v.paused && seqOn()) {
+    const t = v.currentTime, k = seqClips();
     if (!k.some(r => t >= r.start - 0.05 && t < r.end)) {
       const nx = k.find(r => r.start > t);
       if (nx) { seek(nx.start); select(nx, false); } else v.pause();
@@ -1568,7 +1576,7 @@ $("fnext").onclick = $("cfnext").onclick = () => stepFrame(1);
 document.addEventListener("keydown", e => {
   if ($("zdlg").open) return;
   if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && document.activeElement.type !== "checkbox") return;
-  const k = e.key.toLowerCase(), all = sorted(), i = all.indexOf(sel);
+  const k = e.key.toLowerCase(), all = SCOUT && fltOn() ? sorted().filter(isVisible) : sorted(), i = all.indexOf(sel);
   if ((e.ctrlKey || e.metaKey) && k === "s") { e.preventDefault(); saveFile(false); }
   else if (k === "f" && !e.ctrlKey && !e.metaKey) snapFrame();
   else if (k === "z" && !e.ctrlKey && !e.metaKey) zoomTo(1, 0.5, 0.5);

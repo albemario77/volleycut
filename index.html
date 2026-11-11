@@ -197,7 +197,8 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
         <label><input type="checkbox" id="csel"> Sel.</label>
         <button id="cfprev" title="Fotogramma precedente (virgola o Alt+freccia sinistra)">&#9664;|</button>
         <button id="cfnext" title="Fotogramma successivo (punto o Alt+freccia destra)">|&#9654;</button>
-        <button id="csnap" title="Salva come immagine il fotogramma attuale (F)">Foto</button>
+        <button id="ctch" hidden title="Mostra tutti i tocchi dello scout per questa clip">Tocchi</button>
+        <button id="csnap"title="Salva come immagine il fotogramma attuale (F)">Foto</button>
         <select id="cspeed"><option value="0.25">0,25x</option><option value="0.5">0,5x</option><option value="1" selected>1x</option><option value="1.5">1,5x</option><option value="2">2x</option></select>
         <label><input type="checkbox" id="cauto" checked> avanti automatico</label>
         <button id="cfs">Schermo intero</button>
@@ -894,6 +895,7 @@ function syncBar() {
   const P = playlist(), i = P.indexOf(sel);
   $("ctitle").textContent = sel && i >= 0 ? "Clip " + (i + 1) + " di " + P.length : (sel ? "Clip fuori elenco" : "Scegli una clip");
   if (document.activeElement !== $("ctag")) $("ctag").value = sel ? sel.tag || "" : "";
+  $("ctch").hidden = !(SCOUT && sel && sel.sp && SCOUT.points[sel.sp - 1]);
   $("ckeep").checked = !!(sel && sel.keep); $("csel").checked = !!(sel && sel.sel);
 }
 function playClip(r) { sel = r; seek(r.start); v.play(); renderCine(); renderRows(); }
@@ -1145,9 +1147,11 @@ function showTouches(r) {
     "<p><b>" + ScoutLib.pointLabel(p) + "</b>" + (p.winner ? " &middot; punto " + (p.winner === "loc" ? "dei locali" : "degli ospiti") : "") + "</p>" +
     (p.missing ? '<p class="mut">Nessuna riga nello scout: errore generico dell\'avversario.</p>'
       : '<table class="stab"><tr><th>#</th><th>Tocco</th><th>Voto</th><th>Giocatore</th><th>Pos.</th><th>Rot.</th></tr>' + rows + "</table>");
+  if (document.fullscreenElement) document.exitFullscreen();      // il popup sta fuori dalla vista cinema a schermo intero
   $("tchdlg").showModal();
 }
-$("tchclose").onclick = () => $("tchdlg").close();
+$("ctch").onclick = () => { if (sel) showTouches(sel); };
+$("tchclose").onclick =() => $("tchdlg").close();
 function renderRows() {
   const body = $("rows");
   body.innerHTML = "";

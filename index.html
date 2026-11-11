@@ -116,6 +116,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
         <button class="pri" id="save" title="Salva il lavoro in un file partita.json (Ctrl+S)">Salva</button>
         <button id="saveas" title="Salva con un altro nome o in un'altra cartella">Salva come&hellip;</button>
         <button id="open" title="Riprendi il lavoro da un file salvato">Apri&hellip;</button>
+        <button id="opendir" hidden title="Scegli la cartella della partita: carica il lavoro salvato e il video della sottocartella video">Apri cartella partita&hellip;</button>
         <input type="file" id="jfile" accept=".json,application/json" hidden>
         <button id="pick">Scegli il video&hellip;</button>
         <input type="file" id="file" accept="video/*" hidden>
@@ -1282,6 +1283,27 @@ async function openFile() {
       if (loadText(await f.text(), h.name)) fh = h; status(); } catch (e) { /* annullato */ }
   } else $("jfile").click();
 }
+// cartella della partita: lavoro salvato (.json) e video (sottocartella video) caricati insieme
+const VIDEO_EXT = /\.(mp4|m4v|mov|mkv|webm|avi)$/i;
+async function openFolder() {
+  let dir;
+  try { dir = await showDirectoryPicker({ mode: "readwrite" }); } catch (e) { return; }
+  const jsons = [];
+  for await (const [name, h] of dir.entries()) if (h.kind === "file" && /\.json$/i.test(name) && !/prima_d/i.test(name)) jsons.push(h);
+  let jh = jsons.find(h => h.name === "partita.json");
+  if (!jh && jsons.length) { const withT = await Promise.all(jsons.map(async h => [h, (await h.getFile()).lastModified])); jh = withT.sort((x, y) => y[1] - x[1])[0][0]; }
+  if (jh) { const f = await jh.getFile(); if (loadText(await f.text(), jh.name)) fh = jh; status(); }
+  else if (!confirm("Nella cartella non c'e' nessun file .json di lavoro. Carico solo il video?")) return;
+  const vids = [];
+  for (const d of [dir, await dir.getDirectoryHandle("video").catch(() => null)]) {
+    if (d) for await (const [name, h] of d.entries()) if (h.kind === "file" && VIDEO_EXT.test(name)) vids.push(h);
+  }
+  const vh = vids.find(h => h.name === D.video_name) || vids[0];
+  if (!vh) { alert("Non trovo nessun video nella cartella (ne' nella sottocartella video): scegli il video a mano."); return; }
+  v.src = URL.createObjectURL(await vh.getFile());
+}
+if (window.showDirectoryPicker) $("opendir").hidden = false;
+$("opendir").onclick = openFolder;
 $("save").onclick = () => saveFile(false);
 $("saveas").onclick = () => saveFile(true);
 $("open").onclick = openFile;

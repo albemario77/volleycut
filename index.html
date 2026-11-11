@@ -221,6 +221,11 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
     fai doppio clic su nome.bat: il minivideo compare in export/minivideo/<nome>/ nella cartella della partita. Il video principale non viene toccato.</p>
   <textarea readonly id="dcmd" rows="4"></textarea>
 </dialog>
+<dialog id="tchdlg">
+  <h2>Scout della clip</h2>
+  <div id="tchbody"></div>
+  <div class="row"><button class="pri" id="tchclose">Chiudi</button></div>
+</dialog>
 <dialog id="sdlg">
   <h2>Scout caricato</h2>
   <div id="sbody"></div>
@@ -1128,8 +1133,21 @@ function scoutCell(r) {
     (p.winner ? (p.winner === "loc" ? " &#9650;" : " &#9660;") : "") : "";
   return '<td class="sc' + (p && MATCH.dup.has(p.i) ? " dup" : "") + '"><input type="number" class="sp" min="1" max="' + SCOUT.points.length +
     '" value="' + (r.sp || "") + '"> <span' + (sus ? ' class="sus" title="Durata e numero di tocchi non tornano: controlla l\'abbinamento"' : "") + ">" +
-    (sus ? "&#9888; " : "") + lab + "</span></td>";
+    (sus ? "&#9888; " : "") + lab + "</span>" + (p ? ' <button class="sm" data-a="tch" title="Mostra tutti i tocchi del punto">tocchi</button>' : "") + "</td>";
 }
+function showTouches(r) {
+  const p = r.sp ? SCOUT.points[r.sp - 1] : null;
+  if (!p) return;
+  const rows = p.touches.map((t, i) => "<tr><td>" + (i + 1) + "</td><td>" + esc(t.tipo) + "</td><td>" + esc(t.voto) + "</td><td>" + esc(t.cognome) +
+    (t.numero !== null && t.numero !== undefined ? " (" + esc(t.numero) + ")" : "") + "</td><td>" + esc(t.posG) + "</td><td>" + esc(t.posP) + "</td></tr>").join("");
+  const idx = sorted().indexOf(r) + 1;
+  $("tchbody").innerHTML = '<p class="mut">Clip ' + idx + " &middot; " + fmt(r.start) + " &ndash; " + fmt(r.end) + " (" + (r.end - r.start).toFixed(1) + " s)</p>" +
+    "<p><b>" + ScoutLib.pointLabel(p) + "</b>" + (p.winner ? " &middot; punto " + (p.winner === "loc" ? "dei locali" : "degli ospiti") : "") + "</p>" +
+    (p.missing ? '<p class="mut">Nessuna riga nello scout: errore generico dell\'avversario.</p>'
+      : '<table class="stab"><tr><th>#</th><th>Tocco</th><th>Voto</th><th>Giocatore</th><th>Pos.</th><th>Rot.</th></tr>' + rows + "</table>");
+  $("tchdlg").showModal();
+}
+$("tchclose").onclick = () => $("tchdlg").close();
 function renderRows() {
   const body = $("rows");
   body.innerHTML = "";
@@ -1157,6 +1175,7 @@ function renderRows() {
 }
 function act(r, a) {
   const now = v.currentTime;
+  if (a === "tch") { showTouches(r); return; }
   if (a === "play") { select(r, false); seek(r.start); v.play(); return; }
   if (a === "del") { if (r.whistle !== null && r.whistle !== undefined) D.deleted = (D.deleted || []).concat([r.whistle]);   // il ricalcolo non la fa rinascere
     R = R.filter(x => x !== r); if (sel === r) sel = null; changed(); return; }

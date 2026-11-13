@@ -220,7 +220,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
   <label><input type="radio" name="dm" value="precise"> precisa: ricodifica, tagli esatti al fotogramma ma molto piu' lenta (circa 0,4 s per ogni secondo di video)</label>
   <div class="row"><button class="pri" id="dmake">Scarica i file</button><button id="dcopy">Copia il comando</button><button id="dclose">Chiudi</button></div>
   <p class="mut">Vengono scaricati <b>nome.json</b> (la selezione) e <b>nome.bat</b>. Mettili nella stessa cartella e
-    fai doppio clic su nome.bat: il minivideo compare in export/minivideo/<nome>/ nella cartella della partita. Il video principale non viene toccato.</p>
+    fai doppio clic su nome.bat: il minivideo compare in export/minivideo/<nome>/ nella cartella della partita. Il video principale non viene toccato. Se la pagina e' quella online serve la variabile di ambiente <b>VOLLEYCUT</b> (cartella che contiene volley_cut.py); il .bat funziona anche dentro la sottocartella export.</p>
   <textarea readonly id="dcmd" rows="4"></textarea>
 </dialog>
 <dialog id="tchdlg">
@@ -1034,7 +1034,14 @@ $("dmake").onclick = () => {
   const { name, mode } = miniState();
   const rs = chosen().map((r, i) => Object.assign({}, r, { n: i + 1, keep: true, dubious: false, duration: r.end - r.start }));
   download(name + ".json", JSON.stringify({ meta: Object.assign({}, D.meta, { minivideo: name }), rallies: rs }, null, 2), "application/json");
-  const bat = ["@echo off", miniCmd(name, mode, '"%~dp0' + name + '.json"'), "pause", ""].join("\r\n");
+  // la pagina online non conosce il percorso di volley_cut.py: il .bat usa la variabile VOLLEYCUT e trova da solo la cartella
+  // della partita (anche se il file e' stato messo in una sua sottocartella, per esempio export)
+  const J = '"%~dp0' + name + '.json"';
+  const lines = D.cli.script ? [miniCmd(name, mode, J)] : [
+    'set "M=%~dp0."', 'if not exist "%M%\\video" set "M=%~dp0.."',
+    'if not defined VOLLEYCUT (echo Manca la variabile VOLLEYCUT: deve contenere la cartella di volley_cut.py. & pause & exit /b 1)',
+    'python "%VOLLEYCUT%\\volley_cut.py" --match "%M%" --from-json ' + J + " --" + mode + " --name " + name];
+  const bat = ["@echo off"].concat(lines, ["pause", ""]).join("\r\n");
   setTimeout(() => download(name + ".bat", bat, "application/octet-stream"), 400);
 };
 

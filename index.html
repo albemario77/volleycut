@@ -121,6 +121,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
         <button id="pick">Scegli il video&hellip;</button>
         <input type="file" id="file" accept="video/*,.mp4,.m4v,.mov,.mkv,.webm,application/octet-stream" hidden>
         <button id="reset" title="Torna alla proposta automatica">Ripristina originale</button>
+        <button id="compact" title="A revisione finita: crea un video con le sole clip tenute (piu' 2 s per lato) e il suo partita.json, per occupare meno spazio">Compatta video&hellip;</button>
         <button id="gocine" title="Video grande con l'elenco delle clip a destra">Vista cinema</button>
         <button id="fprev" title="Fotogramma precedente (virgola o Alt+freccia sinistra)">&#9664;|</button>
         <button id="fnext" title="Fotogramma successivo (punto o Alt+freccia destra)">|&#9654;</button>
@@ -411,25 +412,48 @@ const ScoutLib = (function () {
         list.push(g ? { set: s, n: k + 1, loc: g.loc, osp: g.osp, touches: g.touches, missing: false, winner: null }
           : { set: s, n: k + 1, loc: null, osp: null, touches: [], missing: true, winner: null });
       }
-      // punti senza righe = errore generico dell'avversario: il punto e' della squadra dello scout.
-      // Anche con piu' punti vuoti di fila il punteggio si ricostruisce: ogni vuoto e' un punto di S, quindi
-      // dal punteggio prima e dopo si capisce chi ha vinto il rally precedente (che ha le righe).
+      // Punti senza righe: l'avversario ha fatto un errore generico (punto di S) oppure un punto generico, per esempio
+      // un ace (punto suo, T). Chi ha segnato si ricava dal punteggio prima e dopo; quando non basta, da chi batte
+      // nel punto successivo (se batte S, l'ultimo punto vuoto era suo) e dal voto "=" che chiude il rally precedente.
       for (let k = 0; k < n; k++) {
         if (!list[k].missing) continue;
         let k1 = k; while (k1 + 1 < n && list[k1 + 1].missing) k1++;
         const m = k1 - k + 1, a = list[k - 1], c = list[k1 + 1], run = list.slice(k, k1 + 1);
-        run.forEach(p => { p.winner = S; });
         if (a && c && !a.missing && !c.missing) {
           const dS = c[S] - a[S], dT = c[T] - a[T];
-          if (dT >= 0 && dT <= 1 && dS >= m && dS + dT === m + 1) {
-            let sc = a[S] + (dT === 0 ? 1 : 0);                    // se il rally prima lo ha perso S, il suo punto e' dell'avversario
-            const tc = a[T] + dT;
-            run.forEach(p => { p[S] = sc++; p[T] = tc; p.recon = true; });
+          if (dS >= 0 && dT >= 0 && dS + dT === m + 1) {
+            // tutte le sequenze possibili di vincitori (rally prima + punti vuoti) con quel punteggio, poi gli indizi:
+            // chi batte nel punto dopo, il voto "=" che chiude il rally prima, di quanto e' girata la rotazione
+            // (si gira solo quando S fa punto mentre batte T).
+            const first = a.touches[0].tipo, next = c.touches[0].tipo, lastVote = a.touches[a.touches.length - 1].voto;
+            const srv0 = first === "Battuta" ? S : first === "Ricezione" ? T : null;
+            const pa = parseInt(String(a.touches[0].posP).replace(/[^0-9]/g, ""), 10), pc = parseInt(String(c.touches[0].posP).replace(/[^0-9]/g, ""), 10);
+            const turned = pa >= 1 && pc >= 1 ? ((pa - pc) % 6 + 6) % 6 : null;
+            let cand = [];
+            if (m <= 10) for (let mask = 0; mask < (1 << (m + 1)); mask++) {
+              const w = []; let cnt = 0;
+              for (let i = 0; i <= m; i++) { const isS = (mask >> i) & 1; w.push(isS ? S : T); cnt += isS; }
+              if (cnt === dS) cand.push(w);
+            }
+            const all = cand;
+            cand = cand.filter(w => (next !== "Battuta" || w[m] === S) && (next !== "Ricezione" || w[m] === T) && (lastVote !== "=" || w[0] === T));
+            if (cand.length > 1 && srv0 && turned !== null) {
+              const byRot = cand.filter(w => { let srv = srv0, rot = 0; w.forEach(x => { if (x === S && srv === T) rot++; srv = x; }); return rot % 6 === turned; });
+              if (byRot.length) cand = byRot;
+            }
+            const sure = cand.length === 1;
+            const W = (cand.length ? cand : all)[0] || new Array(m + 1).fill(S);
+            if (!sure) {
+              issues.push({ level: "warn", msg: "Set " + s + ", punto " + run[0].n + (m > 1 ? "-" + run[m - 1].n : "") + ": " + (m === 1 ? "punto" : m + " punti di fila") +
+                " senza righe, non capisco con certezza chi ha segnato (da " + a.loc + "-" + a.osp + " a " + c.loc + "-" + c.osp + "). Da controllare." });
+              run.forEach(p => { p.suspect = true; });
+            }
+            let sc = a[S] + (W[0] === S ? 1 : 0), tc = a[T] + (W[0] === T ? 1 : 0);
+            run.forEach((p, i) => { p[S] = sc; p[T] = tc; p.winner = W[i + 1]; p.recon = true; if (W[i + 1] === S) sc++; else tc++; });
           } else {
-            const txt = m === 1 ? "senza righe ma non e' un errore avversario" : m + " punti di fila senza righe ma non sono tutti errori avversari";
-            issues.push({ level: "warn", msg: "Set " + s + ", punto " + run[0].n + (m > 1 ? "-" + run[m - 1].n : "") + ": " + txt + " (da " + a.loc + "-" + a.osp + " a " + c.loc + "-" + c.osp + "). Da controllare." });
+            issues.push({ level: "warn", msg: "Set " + s + ", punto " + run[0].n + (m > 1 ? "-" + run[m - 1].n : "") + ": " + (m === 1 ? "punto" : m + " punti") +
+              " senza righe ma il punteggio non torna (da " + a.loc + "-" + a.osp + " a " + c.loc + "-" + c.osp + "). Da controllare." });
             run.forEach(p => { p.suspect = true; p.winner = null; });
-            if (m === 1) { const p = run[0]; p.winner = dT === 2 ? T : null; p[S] = a[S] + (dS === 2 ? 1 : 0); p[T] = a[T] + (dT ? 1 : 0); }
           }
         } else {
           issues.push({ level: "warn", msg: "Set " + s + ", punto " + run[0].n + ": senza righe e senza un punteggio vicino, punteggio non ricostruibile." });
@@ -787,7 +811,7 @@ const SegLib = (function () {
 if (typeof module !== "undefined" && module.exports) module.exports = SegLib;
 
 const EMPTY = { empty: true, video_name: "", video_src: "", duration: 1, threshold: 0, min_clip_s: 0.5, motion: [], motion_bin: 1,
-  motion_max: 1, whistles: [], seg: null, fps: null, cells: null, zones: null, deleted: [], cli: {}, rallies: [], meta: {} };
+  motion_max: 1, whistles: [], seg: null, fps: null, cells: null, zones: null, deleted: [], compact: null, cli: {}, rallies: [], meta: {} };
 let D = /*__DATA__*/null || EMPTY;
 const $ = id => document.getElementById(id);
 const v = $("v"), cv = $("main"), ov = $("over");
@@ -970,7 +994,7 @@ function showScout() {
   $("sbody").innerHTML = '<p class="mut">' + esc(s.file) + (s.team ? " &middot; " + esc(s.team) : "") + "</p>" +
     "<p><b>" + s.touches + "</b> tocchi, <b>" + s.points.length + "</b> punti in " + s.sets.length + " set. Set vinti " +
     s.setsWon[0] + "-" + s.setsWon[1] + " (locali-ospiti).</p>" +
-    '<table class="stab"><tr><th>Set</th><th>Punti</th><th>Finale</th><th>Vince</th><th title="Rally senza righe: errore generico dell\'avversario, non riportato nell\'xlsx">Errori avv.</th></tr>' + rows + "</table>" +
+    '<table class="stab"><tr><th>Set</th><th>Punti</th><th>Finale</th><th>Vince</th><th title="Rally senza righe: errore generico o punto generico dell\'avversario, non riportati nell\'xlsx">Senza righe</th></tr>' + rows + "</table>" +
     (errs.length ? '<p class="bad"><b>Da correggere:</b></p><ul>' + errs.map(i => "<li>" + esc(i.msg) + "</li>").join("") + "</ul>" : '<p class="good">Controlli superati: i set rispettano le regole di fine set.</p>') +
     (warns.length ? "<p><b>Da controllare:</b></p><ul>" + warns.map(i => "<li>" + esc(i.msg) + "</li>").join("") + "</ul>" : "") + matchReport();
   $("sdlg").showModal();
@@ -1043,6 +1067,26 @@ $("dmake").onclick = () => {
     'python "%VOLLEYCUT%\\volley_cut.py" --match "%M%" --from-json ' + J + " --" + mode + " --name " + name];
   const bat = ["@echo off"].concat(lines, ["pause", ""]).join("\r\n");
   setTimeout(() => download(name + ".bat", bat, "application/octet-stream"), 400);
+};
+
+// ---- video compatto: solo le clip tenute piu' un margine; il taglio lo fa lo script, qui si scaricano i due file
+$("compact").onclick = () => {
+  if (D.empty) { alert("Apri prima una partita."); return; }
+  if (D.compact) { alert("Questo lavoro e' gia' su un video compatto."); return; }
+  const k = kept(), tot = k.reduce((a, r) => a + (r.end - r.start), 0), NL = String.fromCharCode(10);
+  if (!k.length) { alert("Nessuna clip con Tieni."); return; }
+  if (!confirm("Video compatto: restano le " + k.length + " clip con Tieni (" + (tot / 60).toFixed(1) + " min su " + (DUR / 60).toFixed(1) +
+    "), con 2 secondi prima e dopo ciascuna, a 8 Mbit/s." + NL + NL +
+    "Da fare a revisione finita: nel video compatto le azioni scartate non ci sono piu' e le clip non si possono allargare oltre i 2 secondi." + NL + NL +
+    "Scarico compatta.json e compatta.bat: mettili nella cartella della partita (o in export) e fai doppio clic su compatta.bat." + NL +
+    "Il video originale e il partita.json non vengono toccati: il risultato va nella sottocartella compatto.")) return;
+  download("compatta.json", toJSON(loadedRev), "application/json");
+  const J = '"%~dp0compatta.json"', opt = " --compact " + J + " --margin 2 --bitrate 8";
+  const lines = D.cli.script && D.cli.match ? ["python " + q(D.cli.script) + " --match " + q(D.cli.match) + opt] : [
+    'set "M=%~dp0."', 'if not exist "%M%\\video" set "M=%~dp0.."',
+    'if not defined VOLLEYCUT (echo Manca la variabile VOLLEYCUT: deve contenere la cartella di volley_cut.py. & pause & exit /b 1)',
+    'python "%VOLLEYCUT%\\volley_cut.py" --match "%M%"' + opt];
+  setTimeout(() => download("compatta.bat", ["@echo off"].concat(lines, ["pause", ""]).join(String.fromCharCode(13, 10)), "application/octet-stream"), 400);
 };
 
 function stats() {
@@ -1139,7 +1183,7 @@ $("tgo").onclick = () => {
 function scoutCell(r) {
   if (!SCOUT || !MATCH) return "<td></td>";
   const p = r.sp ? SCOUT.points[r.sp - 1] : null, sus = MATCH.suspects.has(r);
-  const lab = p ? ScoutLib.pointLabel(p) + (p.missing ? " &middot; err. avv." : " &middot; " + p.touches.length + " tocchi" + (p.touches[0].posP ? " &middot; rot " + p.touches[0].posP : "")) +
+  const lab = p ? ScoutLib.pointLabel(p) + (p.missing ? (p.winner && p.winner !== SCOUT.side ? " &middot; punto avv." : " &middot; err. avv.") : " &middot; " + p.touches.length + " tocchi" + (p.touches[0].posP ? " &middot; rot " + p.touches[0].posP : "")) +
     (p.winner ? (p.winner === "loc" ? " &#9650;" : " &#9660;") : "") : "";
   return '<td class="sc' + (p && MATCH.dup.has(p.i) ? " dup" : "") + '"><input type="number" class="sp" min="1" max="' + SCOUT.points.length +
     '" value="' + (r.sp || "") + '"> <span' + (sus ? ' class="sus" title="Durata e numero di tocchi non tornano: controlla l\'abbinamento"' : "") + ">" +
@@ -1153,7 +1197,7 @@ function showTouches(r) {
   const idx = sorted().indexOf(r) + 1;
   $("tchbody").innerHTML = '<p class="mut">Clip ' + idx + " &middot; " + fmt(r.start) + " &ndash; " + fmt(r.end) + " (" + (r.end - r.start).toFixed(1) + " s)</p>" +
     "<p><b>" + ScoutLib.pointLabel(p) + "</b>" + (p.winner ? " &middot; punto " + (p.winner === "loc" ? "dei locali" : "degli ospiti") : "") + "</p>" +
-    (p.missing ? '<p class="mut">Nessuna riga nello scout: errore generico dell\'avversario.</p>'
+    (p.missing ? '<p class="mut">Nessuna riga nello scout: ' + (p.winner && p.winner !== SCOUT.side ? "punto generico dell'avversario (per esempio un ace)." : "errore generico dell'avversario.") + "</p>"
       : '<table class="stab"><tr><th>#</th><th>Tocco</th><th>Voto</th><th>Giocatore</th><th>Pos.</th><th>Rot.</th></tr>' + rows + "</table>");
   if (document.fullscreenElement) document.exitFullscreen();      // il popup sta fuori dalla vista cinema a schermo intero
   $("tchdlg").showModal();
@@ -1227,7 +1271,7 @@ function status() {
 function markDirty(d) { dirty = d; status(); }
 const projectData = () => ({ video_name: D.video_name, duration: D.duration, threshold: D.threshold, min_clip_s: D.min_clip_s,
   motion: D.motion, motion_bin: D.motion_bin, motion_max: D.motion_max, whistles: D.whistles, seg: D.seg, fps: D.fps,
-  cells: D.cells, zones: D.zones, deleted: D.deleted || [] });
+  cells: D.cells, zones: D.zones, deleted: D.deleted || [], compact: D.compact || null });
 let loadedRev = +(D.meta && D.meta.revision || 0);          // revisione del file aperto: serve a non sovrascrivere un salvataggio fatto altrove
 const toJSON = rev => JSON.stringify({ meta: Object.assign({}, D.meta, { reviewed: true, revision: rev, saved_at: new Date().toISOString() },
   SCOUT ? { scout: scoutMeta() } : {}, { project: projectData() }),
@@ -1534,6 +1578,7 @@ function thrInfo() {
 }
 $("thr").oninput = e => { const x = parseFloat(e.target.value); thrPrev = isFinite(x) && x >= 0 ? x : null; draw(); };
 $("recalc").onclick = () => {
+  if (D.compact) { alert("Questo e' un video compatto: le parti tra le clip non ci sono piu', il ricalcolo non si puo' fare."); return; }
   const thr = thrNow(), seg = D.seg || SegLib.DEFAULTS;
   const t = R.map(r => Object.assign({}, r)), res = SegLib.recalc(t, D.whistles, D.motion, D.motion_bin, DUR, thr, seg, D.deleted);
   const NL = String.fromCharCode(10);

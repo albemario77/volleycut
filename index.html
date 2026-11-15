@@ -174,6 +174,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
     <select id="fgrade" title="Voto del tocco"></select>
     <select id="fpos" title="Posizione in campo del giocatore al momento del tocco (P1-P6)"></select>
     <select id="frot" title="Rotazione: posizione del palleggiatore a inizio rally (P1-P6)"></select>
+    <select id="fdet" title="Dettagli del tocco scritti nello scout .dvw: tipo di battuta, tipo di palla, tipo di colpo, muro, codici speciali..." hidden></select>
     <select id="fda" title="Zona di partenza del colpo (battuta, attacco, free ball): solo con lo scout .dvw" hidden></select>
     <select id="fa" title="Zona di arrivo del colpo (battuta, ricezione, attacco, free ball): solo con lo scout .dvw" hidden></select>
     <select id="fwon" title="Chi ha segnato il punto"></select>
@@ -533,8 +534,114 @@ const ScoutLib = (function () {
   // Altri campi: [8] set, [9]/[10] posizione del palleggiatore locali/ospiti, [14..19]/[20..25] maglie in zona 1..6.
   // A differenza dell'xlsx ogni punto e' scritto in chiaro: non c'e' nulla da dedurre. Gli orari non si usano.
   const DVW_SKILL = { S: "Battuta", R: "Ricezione", E: "Alzata", A: "Attacco", B: "Muro", D: "Difesa", F: "Free ball" };
-  const isDvw = text => /^﻿?\s*\[3DATAVOLLEYSCOUT\]/.test(text);
+  const isDvw = text => /^\uFEFF?\s*\[3DATAVOLLEYSCOUT\]/.test(text);
   const titleCase = s => s.toLowerCase().replace(/(^|[\s'\-])(\S)/g, (m, a, b) => a + b.toUpperCase());
+
+  // Il codice completo di un tocco secondo lo standard DataVolley. Tolti squadra e numero di maglia resta `cod`:
+  //   [0] fondamentale  [1] tipo di palla/battuta  [2] voto  [3-4] combinazione d'attacco o chiamata del palleggiatore
+  //   [5] bersaglio dell'alzata  [6] zona di partenza  [7] zona di arrivo  [8] sottozona di arrivo
+  //   [9] tipo di colpo  [10] giocatori (muro o ricezione)  [11] codice speciale  [12...] nota libera
+  // "~" = non indicato. Le tabelle seguono il manuale DataVolley (come le riporta il lettore libero openvolley/datavolley).
+  const DV_SERVE = { H: "float da ferma", M: "float in salto", Q: "in salto", T: "topspin" };
+  const DV_BALL = { H: "palla alta", M: "mezza palla", Q: "palla veloce", T: "palla tesa", U: "palla super", F: "palla fast", N: "palla slide", O: "altra palla" };
+  const DV_SUB = {
+    A: { H: "colpo forte", P: "colpo piazzato", T: "pallonetto" },
+    B: { A: "muro di aiuto", T: "tentativo di muro", P: "muro su colpo piazzato" },
+    R: { L: "a sinistra", R: "a destra", W: "bassa", O: "in palleggio", M: "al centro" },
+    E: { 1: "a una mano", 2: "a due mani", 3: "in bagher", 4: "altro tipo", 5: "dal basso", O: "in palleggio", U: "in bagher" },
+    D: { S: "su schiacciata", C: "copertura", B: "dopo il muro", E: "d'emergenza", T: "su pallonetto", P: "su colpo piazzato" },
+  };
+  const DV_BLOCK = { 0: "senza muro", 1: "muro a 1", 2: "muro a 2", 3: "muro a 3", 4: "muro aperto" };
+  const DV_RECV = { 1: "ricezione a 2, riceve chi sta a sinistra", 2: "ricezione a 2, riceve chi sta a destra", 3: "ricezione a 3, riceve chi sta a sinistra",
+    4: "ricezione a 3, riceve chi sta al centro", 5: "ricezione a 3, riceve chi sta a destra", 6: "ricezione a 4, riceve chi sta a sinistra",
+    7: "ricezione a 4, riceve chi sta al centro-sinistra", 8: "ricezione a 4, riceve chi sta al centro-destra", 9: "ricezione a 4, riceve chi sta a destra" };
+  const DV_TARGET = { F: "verso avanti", B: "verso dietro", C: "verso il centro", P: "pipe", S: "attacco del palleggiatore" };
+  const DV_RFD = { U: "ingiocabile", X: "errore di tecnica", P: "errore di posizione", Z: "decisione arbitrale", E: "poco impegno", F: "palla a terra", O: "palla fuori" };
+  const DV_SPECIAL = {
+    "A=": { S: "fuori di lato", O: "fuori lungo", N: "in rete", I: "tocco di rete", Z: "decisione arbitrale", A: "antenna" },
+    "A#": { S: "mani-fuori di lato", O: "mani-fuori lungo", F: "muro e palla a terra", X: "diretta a terra", N: "con tocco del nastro" },
+    "A": { C: "muro controllato", N: "con tocco del nastro" },
+    "B": { S: "palla fuori di lato", O: "palla fuori lunga", F: "palla a terra", X: "tra le mani", N: "tra mani e rete", I: "tocco di rete", A: "antenna", P: "senza salto", T: "errore di posizione", Z: "decisione arbitrale" },
+    "R": DV_RFD, "F": DV_RFD, "D": DV_RFD,
+    "E": { U: "non attaccabile", I: "tocco di rete", Z: "decisione arbitrale" },
+    "S=": { O: "fuori lunga", L: "fuori a sinistra", R: "fuori a destra", N: "in rete", Z: "decisione arbitrale" },
+    "S": { N: "con tocco del nastro" },
+  };
+  const DV_EVAL = {
+    S: { "=": "errore", "/": "positiva, l'avversario non attacca", "-": "negativa, attacco libero dell'avversario", "!": "discreta, niente primo tempo", "+": "positiva, attacco avversario limitato", "#": "ace" },
+    R: { "=": "errore", "/": "scarsa, nessun attacco", "-": "negativa, attacco limitato", "!": "discreta, niente primo tempo", "+": "positiva, si attacca", "#": "perfetta" },
+    A: { "=": "errore", "/": "murato", "-": "scarso, difeso facilmente", "!": "murato, si rigioca", "+": "positivo", "#": "punto" },
+    B: { "=": "errore", "/": "invasione", "-": "scarso, l'avversario rigioca", "!": "scarso, l'avversario rigioca", "+": "positivo, palla toccata", "#": "muro punto" },
+    D: { "=": "errore", "/": "palla tornata subito di la'", "-": "nessun attacco organizzato", "!": "discreta, niente primo tempo", "+": "buona", "#": "perfetta" },
+    E: { "=": "errore", "/": "scarsa", "-": "scarsa", "!": "discreta", "+": "positiva", "#": "perfetta" },
+    F: { "=": "errore", "/": "scarsa", "-": "discreta, solo palla alta", "!": "discreta, niente primo tempo", "+": "buona", "#": "perfetta" },
+  };
+  const dvSet = ch => ch !== undefined && ch !== "" && ch !== "~";
+  const dvOdd = v => "codice " + v + " (non previsto dallo standard)";
+
+  // Dettagli di un tocco letti dal codice: [{g: gruppo, v: valore nel file, l: testo}]. `dv` = tabelle del file
+  // ({att, call}: descrizione delle combinazioni d'attacco e delle chiamate del palleggiatore).
+  function dvDetails(t, dv) {
+    const c = t && t.cod;
+    if (!c) return [];
+    const k = c[0], ev = c[2], out = [];
+    const add = (g, v, l) => out.push({ g, v, l: l || dvOdd(v) });
+    if (dvSet(c[1]) && k !== "F") add("tipo", c[1], k === "S" ? DV_SERVE[c[1]] : k === "R" ? DV_SERVE[c[1]] && "su battuta " + DV_SERVE[c[1]] : DV_BALL[c[1]]);
+    const combo = c.slice(3, 5).replace(/~/g, "");
+    if (combo) {
+      const desc = dv && (k === "E" ? dv.call : dv.att) ? (k === "E" ? dv.call : dv.att)[combo] : "";
+      add("comb", combo, (k === "E" ? "chiamata " : "combinazione ") + combo + (desc ? " (" + desc + ")" : ""));
+    }
+    if (dvSet(c[5])) add("bers", c[5], DV_TARGET[c[5]]);
+    if (dvSet(c[8])) add("sotto", c[8], "sottozona di arrivo " + c[8]);
+    if (dvSet(c[9]) && !(k === "A" && c[9] === "T")) add("colpo", c[9], (DV_SUB[k] || {})[c[9]]);      // il pallonetto e' gia' il nome del tocco
+    if (dvSet(c[10])) add("gioc", c[10], (k === "A" || k === "B" ? DV_BLOCK : k === "R" ? DV_RECV : {})[c[10]]);
+    if (dvSet(c[11])) add("spec", c[11], (DV_SPECIAL[k + ev] || DV_SPECIAL[k] || {})[c[11]]);
+    const note = c.slice(12).replace(/~/g, "").trim();
+    if (note) out.push({ g: "nota", v: note, l: "nota: " + note });
+    return out;
+  }
+  // significato del voto per quel fondamentale (standard DataVolley)
+  const dvEval = t => (t && t.cod && DV_EVAL[t.cod[0]] ? DV_EVAL[t.cod[0]][t.cod[2]] || "" : "");
+
+  // Voci per il filtro "dettaglio": solo i dettagli che distinguono davvero i tocchi di uno stesso fondamentale
+  // (un valore uguale per tutti, come la "palla alta" messa in automatico, non dice niente). Valore = "tocco|gruppo|valore".
+  function dvSurvey(touchList, dv) {
+    const by = new Map();                                 // "tocco|gruppo" -> Map(valore -> {testo, quanti})
+    const seen = new Map();
+    for (const t of touchList) {
+      if (!t.cod) continue;
+      seen.set(t.tipo, (seen.get(t.tipo) || 0) + 1);
+      for (const d of dvDetails(t, dv)) {
+        if (d.g === "nota") continue;
+        const key = t.tipo + "|" + d.g;
+        if (!by.has(key)) by.set(key, new Map());
+        const m = by.get(key);
+        m.set(d.v, { l: d.l, n: (m.get(d.v) ? m.get(d.v).n : 0) + 1 });
+      }
+    }
+    const fixed = new Set();                              // "tocco|gruppo" con lo stesso valore su tutti i tocchi
+    for (const [key, m] of by) {
+      const tot = [...m.values()].reduce((s, x) => s + x.n, 0);
+      if (m.size === 1 && tot === seen.get(key.split("|")[0])) fixed.add(key);
+    }
+    return { by, fixed };
+  }
+  function dvFilterOptions(touchList, dv) {
+    const { by, fixed } = dvSurvey(touchList, dv), out = [];
+    for (const [key, m] of by) {
+      if (fixed.has(key)) continue;
+      for (const [v, x] of m) out.push([key + "|" + v, key.split("|")[0] + ": " + x.l]);
+    }
+    return out.sort((x, y) => x[1].localeCompare(y[1], "it"));
+  }
+  // i dettagli da mostrare per un tocco: senza quelli uguali per tutti (`fixed` = dvFixed(tutti i tocchi))
+  const dvFixed = (touchList, dv) => dvSurvey(touchList, dv).fixed;
+  const dvShown = (t, dv, fixed) => dvDetails(t, dv).filter(d => !fixed || !fixed.has(t.tipo + "|" + d.g));
+  function dvMatch(t, value, dv) {
+    const [tipo, g, v] = value.split("|");
+    return t.tipo === tipo && dvDetails(t, dv).some(d => d.g === g && d.v === v);
+  }
 
   function parseDvw(text) {
     const sec = {};
@@ -546,11 +653,15 @@ const ScoutLib = (function () {
     }
     if (!sec["3SCOUT"]) throw new Error("Nel file .dvw non trovo la sezione [3SCOUT].");
     const rows = sec["3SCOUT"].map(l => l.split(";"));
-    const isTouch = c => /^[*a]\d\d[SREABDF]/.test(c);
+    const TOUCH = /^([*a])(\d{1,2}|\$\$)([SREABDF])(.*)$/;          // "$$" al posto del numero = giocatore non indicato
+    const isTouch = c => TOUCH.test(c);
     const nTouch = pre => rows.filter(f => f[0][0] === pre && isTouch(f[0])).length;
     const issues = [];
     const mine = nTouch("a") > nTouch("*") ? "a" : "*";               // la squadra dello scout: quella con i tocchi dei giocatori
     if (nTouch("*") && nTouch("a")) issues.push({ level: "warn", msg: "Il file contiene tocchi di entrambe le squadre: leggo solo quelli " + (mine === "*" ? "dei locali" : "degli ospiti") + "." });
+    // tabelle del file: combinazioni d'attacco (codice;zona;lato;tipo;descrizione) e chiamate del palleggiatore (codice;;descrizione)
+    const table = (name, at) => { const o = {}; for (const l of sec[name] || []) { const f = l.split(";"); if (f[0]) o[f[0]] = (f[at] || "").trim(); } return o; };
+    const dv = { att: table("3ATTACKCOMBINATION", 4), call: table("3SETTERCALL", 2) };
     const side = mine === "*" ? "loc" : "osp";
     const teamRow = ((sec["3TEAMS"] || [])[mine === "*" ? 0 : 1] || "").split(";");
     const team = (side === "loc" ? "Locali: " : "Ospiti: ") + (teamRow[1] || "").trim();
@@ -562,13 +673,27 @@ const ScoutLib = (function () {
     const rotAt = mine === "*" ? 9 : 10, luAt = mine === "*" ? 14 : 20;
     const zone = ch => (ch >= "1" && ch <= "9" ? ch : "");
     const touchList = [], plist = [];
-    let set = null, loc = 0, osp = 0, id = 1, gen = [], cur = [];     // gen, cur = eventi generici e tocchi del punto in corso
+    const who = pre => (pre === "*" ? "dei locali" : "degli ospiti");
+    const odd = [];                                                   // codici che non so leggere: si segnalano, non si perdono in silenzio
+    let set = null, loc = 0, osp = 0, id = 1, gen = [], cur = [], ev = [];   // gen, cur, ev = eventi generici, tocchi ed eventi (cambi, time-out) del punto in corso
     for (const f of rows) {
       const c = f[0];
+      if (!c) continue;
       if (/^\*\*\d+set/.test(c)) { set = null; continue; }
       const pm = c.match(/^([*a])p(\d+):(\d+)/);
       const g = c.match(/^([*a])\$\$&.([#=])/);
-      if (!pm && !g && !(c[0] === mine && isTouch(c))) continue;
+      const tm = c.match(TOUCH);
+      if (!pm && !g && !tm) {
+        let m;
+        if (/^[*a]z\d/.test(c) || />LUp/i.test(c)) continue;                      // rotazione e formazione iniziale: gia' nei campi di ogni riga
+        if ((m = c.match(/^([*a])T/))) ev.push("time-out " + who(m[1]));
+        else if ((m = c.match(/^([*a])c(\d+):(\d+)/))) ev.push("cambio " + who(m[1]) + ": esce #" + Number(m[2]) + ", entra #" + Number(m[3]));
+        else if ((m = c.match(/^([*a])P(\d+)/))) ev.push("nuovo palleggiatore " + who(m[1]) + ": #" + Number(m[2]));
+        else if (c[0] === ">") ev.push("nota: " + c.replace(/^>+/, ""));
+        else odd.push(c);
+        continue;
+      }
+      if (tm && tm[1] !== mine) continue;
       const s = Number(f[8]);
       if (!s) { issues.push({ level: "err", msg: "Riga senza numero di set (" + c + "): ignorata." }); continue; }
       if (s !== set) { set = s; loc = 0; osp = 0; gen = []; cur = []; }
@@ -580,10 +705,12 @@ const ScoutLib = (function () {
         // `gen` = l'evento generico segnato per primo, quando il punto non si chiude con un tocco "++" o "=" di un
         // giocatore: [squadra, esito], per esempio ["osp", "="] = errore generico degli ospiti
         const lastVote = cur.length ? cur[cur.length - 1].voto : "";
-        plist.push({ set: s, loc, osp, w, gen: lastVote === "++" || lastVote === "=" ? null : gen[0] || null,
-          rot: posP, lu: lineup.some(Boolean) ? lineup.map(x => (x === "" ? null : Number(x))) : null });
+        const q = { set: s, loc, osp, w, gen: lastVote === "++" || lastVote === "=" ? null : gen[0] || null,
+          rot: posP, lu: lineup.some(Boolean) ? lineup.map(x => (x === "" ? null : Number(x))) : null };
+        if (ev.length) q.ev = ev;
+        plist.push(q);
         touchList.push(...cur);
-        loc = nl; osp = no; gen = []; cur = [];
+        loc = nl; osp = no; gen = []; cur = []; ev = [];
         continue;
       }
       if (g) {
@@ -593,26 +720,27 @@ const ScoutLib = (function () {
           cur.push({ id: id++, tipo: "Errore generico", voto: "", cognome: "", numero: null, posG: "", posP, set: s, loc, osp });
         continue;
       }
-      const numero = Number(c.slice(1, 3)), z = lineup.indexOf(String(numero)) + 1;
-      const t = { id: id++, tipo: c[3] === "A" && c[12] === "T" ? "Pallonetto" : DVW_SKILL[c[3]], voto: c[5] === "#" ? "++" : c[5] || "", cognome: names[numero] || "", numero,
-        posG: z ? "P" + z : "", posP, set: s, loc, osp };
-      const da = zone(c[9] || ""), a = zone(c[10] || "");
+      const cod = tm[3] + tm[4], numero = tm[2] === "$$" ? null : Number(tm[2]), z = numero === null ? 0 : lineup.indexOf(String(numero)) + 1;
+      const t = { id: id++, tipo: cod[0] === "A" && cod[9] === "T" ? "Pallonetto" : DVW_SKILL[cod[0]], voto: cod[2] === "#" ? "++" : dvSet(cod[2]) ? cod[2] : "",
+        cognome: numero === null ? "" : names[numero] || "", numero, posG: z ? "P" + z : "", posP, set: s, loc, osp, cod };
+      const da = zone(cod[6] || ""), a = zone(cod[7] || "");
       if (da) t.da = da;
       if (a) t.a = a;
       cur.push(t);
     }
+    if (odd.length) issues.push({ level: "warn", msg: odd.length + " righe con un codice che non so leggere, ignorate: " + [...new Set(odd)].slice(0, 6).join(", ") + (new Set(odd).size > 6 ? "..." : "") + "." });
     if (cur.length) issues.push({ level: "warn", msg: "Gli ultimi " + cur.length + " tocchi del file non hanno un punto assegnato: scout interrotto?" });
-    return { team, touchList, plist, issues };
+    return { team, touchList, plist, issues, dv };
   }
 
-  // Punti gia' espliciti (dal .dvw): `plist` = [{set, loc, osp (punteggio a inizio rally), w, gen, rot, lu}].
-  // `touchList` e `plist` sono cio' che si salva nel file corretto.
-  function fromDvw(team, touchList, plist, extraIssues) {
+  // Punti gia' espliciti (dal .dvw): `plist` = [{set, loc, osp (punteggio a inizio rally), w, gen, rot, lu, ev}].
+  // `touchList`, `plist` e `dv` (tabelle delle combinazioni) sono cio' che si salva nel file corretto.
+  function fromDvw(team, touchList, plist, extraIssues, dv) {
     if (!plist || !plist.length) throw new Error("Lo scout non contiene nessun punto.");
     const side = /^\s*ospiti/i.test(team || "") ? "osp" : "loc";
     const issues = (extraIssues || []).slice();
     const points = plist.map(q => ({ set: q.set, n: q.loc + q.osp + 1, loc: q.loc, osp: q.osp, touches: [], missing: true, winner: q.w,
-      gen: q.gen || null, rot: q.rot || "", lineup: q.lu || null }));
+      gen: q.gen || null, rot: q.rot || "", lineup: q.lu || null, events: q.ev || null }));
     const at = new Map(points.map(p => [p.set + ":" + (p.n - 1), p]));
     for (const t of touchList) {
       const p = at.get(t.set + ":" + (t.loc + t.osp));
@@ -636,12 +764,12 @@ const ScoutLib = (function () {
     });
     if (wl < 3 && wo < 3) issues.push({ level: "warn", msg: "La partita non risulta finita (set vinti " + wl + "-" + wo + "): lo scout e' parziale?" });
     points.forEach((p, i) => { p.i = i + 1; });
-    return { team, side, touchList, plist, touches: touchList.filter(t => t.numero !== null).length, points, sets: setInfo, issues, setsWon: [wl, wo] };
+    return { team, side, touchList, plist, dv: dv || { att: {}, call: {} }, touches: touchList.filter(t => t.numero !== null).length, points, sets: setInfo, issues, setsWon: [wl, wo] };
   }
 
   function loadDvw(text) {
     const d = parseDvw(text);
-    return fromDvw(d.team, d.touchList, d.plist, d.issues);
+    return fromDvw(d.team, d.touchList, d.plist, d.issues, d.dv);
   }
 
   // Riconosce il formato dal contenuto: xlsx (archivio zip, inizia con "PK") oppure .dvw (testo, di solito in Windows-1252).
@@ -755,7 +883,7 @@ const ScoutLib = (function () {
     return { pairs, noPoint, noClip, dup, corr, all, suspects, boundaries, issues, eff: eff.length };
   }
 
-  return { readXlsx, parseScout, buildPoints, fromTouches, loadScout, loadScoutFile, parseDvw, fromDvw, loadDvw, ended, target,
+  return { readXlsx, parseScout, buildPoints, fromTouches, loadScout, loadScoutFile, parseDvw, fromDvw, loadDvw, dvDetails, dvEval, dvFilterOptions, dvFixed, dvShown, dvMatch, ended, target,
     effectiveClips, autoMatch, analyze, pointLabel };
 })();
 
@@ -976,11 +1104,11 @@ const normEdited = list => { list.forEach(r => { if (!("edited" in r)) r.edited 
 const saved = D.empty ? null : store.load();
 if (saved && saved.length) { R = saved; D.deleted = store.loadDeleted(); }
 normEdited(R);
-const scoutMeta = () => (SCOUT ? Object.assign({ file: SCOUT.file, team: SCOUT.team, touchList: SCOUT.touchList }, SCOUT.plist ? { plist: SCOUT.plist } : {}) : null);
+const scoutMeta = () => (SCOUT ? Object.assign({ file: SCOUT.file, team: SCOUT.team, touchList: SCOUT.touchList }, SCOUT.plist ? { plist: SCOUT.plist, dv: SCOUT.dv } : {}) : null);
 function restoreScout(m) {
   SCOUT = null;
   if (m && m.touchList && m.touchList.length) {        // con `plist` lo scout viene da un .dvw: i punti sono gia' espliciti
-    try { SCOUT = m.plist ? ScoutLib.fromDvw(m.team || "", m.touchList, m.plist, []) : ScoutLib.fromTouches(m.team || "", m.touchList, []); SCOUT.file = m.file || "scout"; } catch (e) { SCOUT = null; }
+    try { SCOUT = m.plist ? ScoutLib.fromDvw(m.team || "", m.touchList, m.plist, [], m.dv) : ScoutLib.fromTouches(m.team || "", m.touchList, []); SCOUT.file = m.file || "scout"; } catch (e) { SCOUT = null; }
   }
   refreshMatch();
 }
@@ -1247,7 +1375,7 @@ function scoutBar() {
 
 // ---- tabella
 // ---- filtri per scout (valgono per tabella, vista cinema e pulsanti di selezione)
-const FLT = { set: "", player: "", skill: "", grade: "", pos: "", rot: "", da: "", a: "", won: "" };
+const FLT = { set: "", player: "", skill: "", grade: "", pos: "", rot: "", det: "", da: "", a: "", won: "" };
 const fltOn = () => Object.values(FLT).some(Boolean);
 function passScout(r) {
   if (!SCOUT || !fltOn()) return true;
@@ -1256,9 +1384,9 @@ function passScout(r) {
   if (FLT.set && String(p.set) !== FLT.set) return false;
   if (FLT.won === "err" ? !p.missing : FLT.won && p.winner !== FLT.won) return false;
   if (FLT.rot && !(p.rot ? p.rot === FLT.rot : p.touches.some(t => t.posP === FLT.rot))) return false;   // la rotazione e' la stessa per tutto il punto
-  if (FLT.player || FLT.skill || FLT.grade || FLT.pos || FLT.da || FLT.a) {
+  if (FLT.player || FLT.skill || FLT.grade || FLT.pos || FLT.det || FLT.da || FLT.a) {
     return p.touches.some(t => (!FLT.player || t.cognome + "|" + t.numero === FLT.player) && (!FLT.skill || t.tipo === FLT.skill) &&
-      (!FLT.grade || t.voto === FLT.grade) && (!FLT.pos || t.posG === FLT.pos) && (!FLT.da || t.da === FLT.da) && (!FLT.a || t.a === FLT.a));
+      (!FLT.grade || t.voto === FLT.grade) && (!FLT.pos || t.posG === FLT.pos) && (!FLT.det || ScoutLib.dvMatch(t, FLT.det, SCOUT.dv)) && (!FLT.da || t.da === FLT.da) && (!FLT.a || t.a === FLT.a));
   }
   return true;
 }
@@ -1283,6 +1411,9 @@ function fillFilters() {
   const zones = k => uniq(tc.map(t => t[k])).filter(Boolean).sort();
   opts("fda", "da ogni zona", zones("da").map(x => [x, "Da zona " + x]));
   opts("fa", "a ogni zona", zones("a").map(x => [x, "A zona " + x]));
+  const dets = ScoutLib.dvFilterOptions(tc, SCOUT.dv);
+  opts("fdet", "ogni dettaglio", dets);
+  $("fdet").hidden = !dets.length;
   $("fda").hidden = !zones("da").length; $("fa").hidden = !zones("a").length;
   opts("fwon", "chiunque segni", [["loc", "segnano i locali"], ["osp", "segnano gli ospiti"], ["err", "errore avversario"]]);
 }
@@ -1291,7 +1422,7 @@ function applyFilters() {
   const n = R.filter(r => isVisible(r)).length;
   $("fcount").textContent = fltOn() ? n + " clip corrispondono" : "";
 }
-["fset", "fplayer", "fskill", "fgrade", "fpos", "frot", "fda", "fa", "fwon"].forEach(id => { $(id).dataset.k = { fset: "set", fplayer: "player", fskill: "skill", fgrade: "grade", fpos: "pos", frot: "rot", fda: "da", fa: "a", fwon: "won" }[id];
+["fset", "fplayer", "fskill", "fgrade", "fpos", "frot", "fdet", "fda", "fa", "fwon"].forEach(id => { $(id).dataset.k = { fset: "set", fplayer: "player", fskill: "skill", fgrade: "grade", fpos: "pos", frot: "rot", fdet: "det", fda: "da", fa: "a", fwon: "won" }[id];
   $(id).onchange = e => { FLT[e.target.dataset.k] = e.target.value; applyFilters(); }; });
 $("fclear").onclick = () => { Object.keys(FLT).forEach(k => { FLT[k] = ""; }); fillFilters(); applyFilters(); };
 
@@ -1332,10 +1463,14 @@ function scoutCell(r) {
 function showTouches(r) {
   const p = r.sp ? SCOUT.points[r.sp - 1] : null;
   if (!p) return;
+  const dvw = p.touches.some(t => t.cod);                    // tocchi letti da un .dvw: c'e' il codice completo
+  if (dvw && !SCOUT.dvFixed) SCOUT.dvFixed = ScoutLib.dvFixed(SCOUT.touchList, SCOUT.dv);   // dettagli uguali per tutti: non si mostrano
+  const fixed = SCOUT.dvFixed;
   const zn = p.touches.some(t => t.da || t.a);              // zone di partenza e arrivo: solo con lo scout .dvw
-  const rows = p.touches.map((t, i) => "<tr><td>" + (i + 1) + "</td><td>" + esc(t.tipo) + "</td><td>" + esc(t.voto) + "</td><td>" + esc(t.cognome) +
+  const rows = p.touches.map((t, i) => "<tr><td>" + (i + 1) + "</td><td>" + esc(t.tipo) + "</td><td" + (ScoutLib.dvEval(t) ? ' title="' + esc(ScoutLib.dvEval(t)) + '"' : "") + ">" + esc(t.voto) + "</td><td>" + esc(t.cognome) +
     (t.numero !== null && t.numero !== undefined ? " (" + esc(t.numero) + ")" : "") + "</td><td>" + esc(t.posG) + "</td><td>" + esc(t.posP) + "</td>" +
-    (zn ? "<td>" + (t.da || t.a ? esc(t.da || "?") + " &rarr; " + esc(t.a || "?") : "") + "</td>" : "") + "</tr>").join("");
+    (zn ? "<td>" + (t.da || t.a ? esc(t.da || "?") + " &rarr; " + esc(t.a || "?") : "") + "</td>" : "") +
+    (dvw ? "<td>" + esc(ScoutLib.dvShown(t, SCOUT.dv, fixed).map(d => d.l).join(", ")) + "</td>" : "") + "</tr>").join("");
   const gen = p.gen ? (p.gen[1] === "=" ? "errore generico " : "punto generico ") + (p.gen[0] === "loc" ? "dei locali" : "degli ospiti") : "";
   const lu = p.lineup ? '<p class="mut">In campo' + (p.rot ? " (palleggiatore in " + esc(p.rot) + ")" : "") + ": " +
     p.lineup.map((n, i) => "P" + (i + 1) + " " + (n === null ? "?" : "#" + n)).join(" &middot; ") + "</p>" : "";
@@ -1343,8 +1478,9 @@ function showTouches(r) {
   $("tchbody").innerHTML = '<p class="mut">Clip ' + idx + " &middot; " + fmt(r.start) + " &ndash; " + fmt(r.end) + " (" + (r.end - r.start).toFixed(1) + " s)</p>" +
     "<p><b>" + ScoutLib.pointLabel(p) + "</b>" + (p.winner ? " &middot; punto " + (p.winner === "loc" ? "dei locali" : "degli ospiti") : "") + "</p>" +
     (p.missing ? '<p class="mut">Nessun tocco della nostra squadra: ' + (p.winner && p.winner !== SCOUT.side ? "punto generico dell'avversario (per esempio un ace)." : "errore generico dell'avversario.") + "</p>"
-      : '<table class="stab"><tr><th>#</th><th>Tocco</th><th>Voto</th><th>Giocatore</th><th>Pos.</th><th>Rot.</th>' + (zn ? '<th title="Zona di partenza e zona di arrivo del colpo">Zone</th>' : "") + "</tr>" + rows + "</table>" +
-        (gen ? '<p class="mut">Il punto si chiude con: ' + gen + ".</p>" : "")) + lu;
+      : '<table class="stab"><tr><th>#</th><th>Tocco</th><th>Voto</th><th>Giocatore</th><th>Pos.</th><th>Rot.</th>' + (zn ? '<th title="Zona di partenza e zona di arrivo del colpo">Zone</th>' : "") + (dvw ? '<th title="Tipo di battuta o di palla, tipo di colpo, muro, codici speciali: come sono scritti nello scout .dvw">Dettagli</th>' : "") + "</tr>" + rows + "</table>" +
+        (gen ? '<p class="mut">Il punto si chiude con: ' + gen + ".</p>" : "")) +
+    (p.events ? '<p class="mut">Prima di questo punto: ' + esc(p.events.join("; ")) + ".</p>" : "") + lu;
   if (document.fullscreenElement) document.exitFullscreen();      // il popup sta fuori dalla vista cinema a schermo intero
   $("tchdlg").showModal();
 }

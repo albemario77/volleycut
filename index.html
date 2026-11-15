@@ -51,6 +51,8 @@ input[type=text],input[type=number]{font:inherit;color:var(--fg);background:var(
 .legend span{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 10px;vertical-align:baseline}
 dialog{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:10px;max-width:640px;width:92vw}
 dialog::backdrop{background:rgba(0,0,0,.5)}
+#tchdlg.hov{position:fixed;margin:0;pointer-events:none;z-index:50;box-shadow:0 6px 24px rgba(0,0,0,.45);width:auto;max-width:min(640px,92vw)}
+#tchdlg.hov .row{display:none}
 dialog h2{font-size:16px;margin:0 0 8px}
 td.sc{white-space:nowrap}td.sc input{width:3.6em}td.sc.dup input{outline:2px solid #d33}
 .sus{color:var(--dub)}.ci .sc{color:var(--mut)}
@@ -204,7 +206,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
         <label><input type="checkbox" id="csel"> Sel.</label>
         <button id="cfprev" title="Fotogramma precedente (virgola o Alt+freccia sinistra)">&#9664;|</button>
         <button id="cfnext" title="Fotogramma successivo (punto o Alt+freccia destra)">|&#9654;</button>
-        <button id="ctch" hidden title="Mostra tutti i tocchi dello scout per questa clip">Tocchi</button>
+        <button id="ctch" hidden>Tocchi</button>
         <button id="csnap"title="Salva come immagine il fotogramma attuale (F)">Foto</button>
         <select id="cspeed"><option value="0.25">0,25x</option><option value="0.5">0,5x</option><option value="1" selected>1x</option><option value="1.5">1,5x</option><option value="2">2x</option></select>
         <label><input type="checkbox" id="cauto" checked> avanti automatico</label>
@@ -1458,9 +1460,17 @@ function scoutCell(r) {
     (p.winner ? (p.winner === "loc" ? " &#9650;" : " &#9660;") : "") : "";
   return '<td class="sc' + (p && MATCH.dup.has(p.i) ? " dup" : "") + '"><input type="number" class="sp" min="1" max="' + SCOUT.points.length +
     '" value="' + (r.sp || "") + '"> <span' + (sus ? ' class="sus" title="Durata e numero di tocchi non tornano: controlla l\'abbinamento"' : "") + ">" +
-    (sus ? "&#9888; " : "") + lab + "</span>" + (p ? ' <button class="sm" data-a="tch" title="Mostra tutti i tocchi del punto">tocchi</button>' : "") + "</td>";
+    (sus ? "&#9888; " : "") + lab + "</span>" + (p ? ' <button class="sm" data-a="tch">tocchi</button>' : "") + "</td>";
 }
-function showTouches(r) {
+// Con `anchor` (il pulsante sotto il puntatore) il popup si apre accanto al pulsante senza bloccare la pagina e si
+// richiude quando il puntatore esce; senza `anchor` (clic, o tocco sul telefono) e' la finestra con "Chiudi".
+function hideTouches() {
+  const d = $("tchdlg");
+  if (d.open) d.close();
+  if (d.classList.contains("hov")) { d.classList.remove("hov"); d.style.left = d.style.top = ""; document.body.appendChild(d); }
+}
+function showTouches(r, anchor) {
+  hideTouches();
   const p = r.sp ? SCOUT.points[r.sp - 1] : null;
   if (!p) return;
   const dvw = p.touches.some(t => t.cod);                    // tocchi letti da un .dvw: c'e' il codice completo
@@ -1481,12 +1491,29 @@ function showTouches(r) {
       : '<table class="stab"><tr><th>#</th><th>Tocco</th><th>Voto</th><th>Giocatore</th><th>Pos.</th><th>Rot.</th>' + (zn ? '<th title="Zona di partenza e zona di arrivo del colpo">Zone</th>' : "") + (dvw ? '<th title="Tipo di battuta o di palla, tipo di colpo, muro, codici speciali: come sono scritti nello scout .dvw">Dettagli</th>' : "") + "</tr>" + rows + "</table>" +
         (gen ? '<p class="mut">Il punto si chiude con: ' + gen + ".</p>" : "")) +
     (p.events ? '<p class="mut">Prima di questo punto: ' + esc(p.events.join("; ")) + ".</p>" : "") + lu;
+  const d = $("tchdlg");
+  if (anchor) {
+    (document.fullscreenElement || document.body).appendChild(d);   // a schermo intero si vede solo cio' che sta dentro la vista cinema
+    d.classList.add("hov"); d.show();
+    const b = anchor.getBoundingClientRect(), w = d.offsetWidth, h = d.offsetHeight, W = window.innerWidth, H = window.innerHeight;
+    const below = b.bottom + 6 + h <= H, above = b.top - 6 - h >= 0;
+    d.style.left = Math.max(8, Math.min(b.left, W - w - 8)) + "px";
+    d.style.top = (below ? b.bottom + 6 : above ? b.top - 6 - h : Math.max(8, H - h - 8)) + "px";
+    return;
+  }
   if (document.fullscreenElement) document.exitFullscreen();      // il popup sta fuori dalla vista cinema a schermo intero
-  $("tchdlg").showModal();
+  d.showModal();
+}
+// passando col puntatore sul pulsante il popup si apre da solo (solo col mouse: sul telefono resta il tocco)
+function hoverTouches(btn, get) {
+  btn.onpointerenter = e => { if (e.pointerType === "mouse") { const r = get(); if (r) showTouches(r, btn); } };
+  btn.onpointerleave = () => { if ($("tchdlg").classList.contains("hov")) hideTouches(); };
 }
 $("ctch").onclick = () => { if (sel) showTouches(sel); };
-$("tchclose").onclick =() => $("tchdlg").close();
+hoverTouches($("ctch"), () => sel);
+$("tchclose").onclick = hideTouches;
 function renderRows() {
+  if ($("tchdlg").classList.contains("hov")) hideTouches();      // il pulsante sotto il puntatore sta per essere ricreato
   const body = $("rows");
   body.innerHTML = "";
   sorted().forEach((r, i) => {
@@ -1507,7 +1534,7 @@ function renderRows() {
     tr.querySelector("input.k").onchange = e => { r.keep = e.target.checked; touch(r); changed(); };
     tr.querySelector("input.s").onchange = e => { r.sel = e.target.checked; changed(false); tr.classList.toggle("sel", r === sel); };
     tr.querySelector('input[type=text]').onchange = e => { r.tag = e.target.value.trim(); touch(r); changed(false); };
-    tr.querySelectorAll("button").forEach(b => b.onclick = () => act(r, b.dataset.a));
+    tr.querySelectorAll("button").forEach(b => { b.onclick = () => act(r, b.dataset.a); if (b.dataset.a === "tch") hoverTouches(b, () => r); });
     body.appendChild(tr);
   });
 }

@@ -127,7 +127,9 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
         <button id="fnext" title="Fotogramma successivo (punto o Alt+freccia destra)">|&#9654;</button>
         <button id="snap" title="Salva come immagine il fotogramma attuale del video (F)">Foto</button>
         <button id="scout" title="Carica lo scout (file .xlsx esportato da Volley Coach) e controllalo">Carica scout&hellip;</button>
+        <button id="scoutd" title="Carica lo scout in formato DataVolley (file .dvw): ogni punto e' scritto in chiaro, con free ball e zone di battuta e attacco">Carica scout .dvw&hellip;</button>
         <input type="file" id="sfile" accept=".xlsx" hidden>
+        <input type="file" id="sfiled" accept=".dvw,text/plain,application/octet-stream" hidden>
       </div>
       <div class="row mut" id="status"></div>
       <details class="mut" id="help"><summary>Scorciatoie e aiuto</summary>
@@ -172,6 +174,8 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
     <select id="fgrade" title="Voto del tocco"></select>
     <select id="fpos" title="Posizione in campo del giocatore al momento del tocco (P1-P6)"></select>
     <select id="frot" title="Rotazione: posizione del palleggiatore a inizio rally (P1-P6)"></select>
+    <select id="fda" title="Zona di partenza del colpo (battuta, attacco, free ball): solo con lo scout .dvw" hidden></select>
+    <select id="fa" title="Zona di arrivo del colpo (battuta, ricezione, attacco, free ball): solo con lo scout .dvw" hidden></select>
     <select id="fwon" title="Chi ha segnato il punto"></select>
     <button class="sm" id="fclear">azzera</button>
     <span class="mut" id="fcount"></span>
@@ -262,7 +266,8 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
 // Formato atteso: riga 1 = titolo ("Locali: Under 19"), riga 2 = intestazione
 //   ID | Tipo | Voto | Cognome | Numero | Pos. Giocatore | Pos. Palleggiatore | Set | Punti Locali | Punti Ospiti
 // con una riga per ogni tocco della squadra locale. Il punteggio e' quello a INIZIO rally.
-// Un rally senza righe e' un errore generico dell'avversario (l'export non lo riporta).
+// Un rally senza righe e' un errore generico o un punto generico dell'avversario (l'export non li riporta).
+// In alternativa legge lo scout in formato DataVolley (.dvw), dove ogni punto e' esplicito: vedi parseDvw.
 const ScoutLib = (function () {
   "use strict";
 
@@ -517,7 +522,136 @@ const ScoutLib = (function () {
     return fromTouches(team, touches, issues);
   }
 
-  async function loadScoutFile(buffer) { return loadScout(await readXlsx(buffer)); }
+  // ---- scout in formato DataVolley (.dvw, file di testo)
+  // Sezione [3SCOUT]: una riga per evento, campi separati da ";". Il primo campo e' il codice:
+  //   *13RH/        tocco: squadra (* = locali, a = ospiti), numero di maglia, fondamentale, tipo di palla, voto;
+  //                 per battuta, ricezione, attacco e free ball seguono zona di partenza e zona di arrivo
+  //   a$$&H= / #    errore generico / punto generico di una squadra (senza giocatore)
+  //   *p04:03       punto assegnato (a chi ha il prefisso) e nuovo punteggio locali:ospiti
+  //   **1set        fine del set
+  // Altri campi: [8] set, [9]/[10] posizione del palleggiatore locali/ospiti, [14..19]/[20..25] maglie in zona 1..6.
+  // A differenza dell'xlsx ogni punto e' scritto in chiaro: non c'e' nulla da dedurre. Gli orari non si usano.
+  const DVW_SKILL = { S: "Battuta", R: "Ricezione", E: "Alzata", A: "Attacco", B: "Muro", D: "Difesa", F: "Free ball" };
+  const isDvw = text => /^﻿?\s*\[3DATAVOLLEYSCOUT\]/.test(text);
+  const titleCase = s => s.toLowerCase().replace(/(^|[\s'\-])(\S)/g, (m, a, b) => a + b.toUpperCase());
+
+  function parseDvw(text) {
+    const sec = {};
+    let sect = null;
+    for (const line of text.split(/\r?\n/)) {
+      const h = line.match(/^\[(3[A-Z\-]+)\]\s*$/);
+      if (h) { sect = sec[h[1]] = []; continue; }
+      if (sect && line.trim()) sect.push(line);
+    }
+    if (!sec["3SCOUT"]) throw new Error("Nel file .dvw non trovo la sezione [3SCOUT].");
+    const rows = sec["3SCOUT"].map(l => l.split(";"));
+    const isTouch = c => /^[*a]\d\d[SREABDF]/.test(c);
+    const nTouch = pre => rows.filter(f => f[0][0] === pre && isTouch(f[0])).length;
+    const issues = [];
+    const mine = nTouch("a") > nTouch("*") ? "a" : "*";               // la squadra dello scout: quella con i tocchi dei giocatori
+    if (nTouch("*") && nTouch("a")) issues.push({ level: "warn", msg: "Il file contiene tocchi di entrambe le squadre: leggo solo quelli " + (mine === "*" ? "dei locali" : "degli ospiti") + "." });
+    const side = mine === "*" ? "loc" : "osp";
+    const teamRow = ((sec["3TEAMS"] || [])[mine === "*" ? 0 : 1] || "").split(";");
+    const team = (side === "loc" ? "Locali: " : "Ospiti: ") + (teamRow[1] || "").trim();
+    const names = {};
+    for (const l of sec[mine === "*" ? "3PLAYERS-H" : "3PLAYERS-V"] || []) {
+      const f = l.split(";");
+      if (f[1] !== undefined && f[1] !== "") names[Number(f[1])] = titleCase((f[9] || "").trim());
+    }
+    const rotAt = mine === "*" ? 9 : 10, luAt = mine === "*" ? 14 : 20;
+    const zone = ch => (ch >= "1" && ch <= "9" ? ch : "");
+    const touchList = [], plist = [];
+    let set = null, loc = 0, osp = 0, id = 1, gen = [], cur = [];     // gen, cur = eventi generici e tocchi del punto in corso
+    for (const f of rows) {
+      const c = f[0];
+      if (/^\*\*\d+set/.test(c)) { set = null; continue; }
+      const pm = c.match(/^([*a])p(\d+):(\d+)/);
+      const g = c.match(/^([*a])\$\$&.([#=])/);
+      if (!pm && !g && !(c[0] === mine && isTouch(c))) continue;
+      const s = Number(f[8]);
+      if (!s) { issues.push({ level: "err", msg: "Riga senza numero di set (" + c + "): ignorata." }); continue; }
+      if (s !== set) { set = s; loc = 0; osp = 0; gen = []; cur = []; }
+      const posP = f[rotAt] ? "P" + f[rotAt] : "", lineup = f.slice(luAt, luAt + 6);
+      if (pm) {
+        const nl = Number(pm[2]), no = Number(pm[3]), w = pm[1] === "*" ? "loc" : "osp";
+        if (nl + no !== loc + osp + 1 || (w === "loc" ? nl !== loc + 1 : no !== osp + 1))
+          issues.push({ level: "err", msg: "Set " + s + ": punteggio non consecutivo (da " + loc + "-" + osp + " a " + nl + "-" + no + ")." });
+        // `gen` = l'evento generico segnato per primo, quando il punto non si chiude con un tocco "++" o "=" di un
+        // giocatore: [squadra, esito], per esempio ["osp", "="] = errore generico degli ospiti
+        const lastVote = cur.length ? cur[cur.length - 1].voto : "";
+        plist.push({ set: s, loc, osp, w, gen: lastVote === "++" || lastVote === "=" ? null : gen[0] || null,
+          rot: posP, lu: lineup.some(Boolean) ? lineup.map(x => (x === "" ? null : Number(x))) : null });
+        touchList.push(...cur);
+        loc = nl; osp = no; gen = []; cur = [];
+        continue;
+      }
+      if (g) {
+        gen.push([g[1] === "*" ? "loc" : "osp", g[2]]);
+        // errore generico della nostra squadra senza altri tocchi: una riga, come nell'xlsx
+        if (g[1] === mine && g[2] === "=" && gen.length === 1 && !cur.length)
+          cur.push({ id: id++, tipo: "Errore generico", voto: "", cognome: "", numero: null, posG: "", posP, set: s, loc, osp });
+        continue;
+      }
+      const numero = Number(c.slice(1, 3)), z = lineup.indexOf(String(numero)) + 1;
+      const t = { id: id++, tipo: DVW_SKILL[c[3]], voto: c[5] === "#" ? "++" : c[5] || "", cognome: names[numero] || "", numero,
+        posG: z ? "P" + z : "", posP, set: s, loc, osp };
+      const da = zone(c[9] || ""), a = zone(c[10] || "");
+      if (da) t.da = da;
+      if (a) t.a = a;
+      cur.push(t);
+    }
+    if (cur.length) issues.push({ level: "warn", msg: "Gli ultimi " + cur.length + " tocchi del file non hanno un punto assegnato: scout interrotto?" });
+    return { team, touchList, plist, issues };
+  }
+
+  // Punti gia' espliciti (dal .dvw): `plist` = [{set, loc, osp (punteggio a inizio rally), w, gen, rot, lu}].
+  // `touchList` e `plist` sono cio' che si salva nel file corretto.
+  function fromDvw(team, touchList, plist, extraIssues) {
+    if (!plist || !plist.length) throw new Error("Lo scout non contiene nessun punto.");
+    const side = /^\s*ospiti/i.test(team || "") ? "osp" : "loc";
+    const issues = (extraIssues || []).slice();
+    const points = plist.map(q => ({ set: q.set, n: q.loc + q.osp + 1, loc: q.loc, osp: q.osp, touches: [], missing: true, winner: q.w,
+      gen: q.gen || null, rot: q.rot || "", lineup: q.lu || null }));
+    const at = new Map(points.map(p => [p.set + ":" + (p.n - 1), p]));
+    for (const t of touchList) {
+      const p = at.get(t.set + ":" + (t.loc + t.osp));
+      if (p) { p.touches.push(t); p.missing = false; }
+    }
+    const sets = [...new Set(points.map(p => p.set))];
+    const setInfo = [];
+    let wl = 0, wo = 0;
+    sets.forEach((s, si) => {
+      if (s !== si + 1) issues.push({ level: "err", msg: "I set non sono consecutivi: trovo il set " + s + " dopo " + (si ? sets[si - 1] : "nessuno") + "." });
+      if (wl === 3 || wo === 3) issues.push({ level: "err", msg: "La partita era gia' finita ma lo scout contiene il set " + s + "." });
+      const list = points.filter(p => p.set === s), last = list[list.length - 1];
+      const fin = [last.loc + (last.winner === "loc" ? 1 : 0), last.osp + (last.winner === "osp" ? 1 : 0)];
+      const over = list.find(p => ended(s, p.loc, p.osp));
+      if (over) issues.push({ level: "err", msg: "Set " + s + ": il set risulta gia' finito a " + over.loc + "-" + over.osp + " ma continua (punto " + over.n + ")." });
+      const done = ended(s, fin[0], fin[1]);
+      if (!done) issues.push({ level: "err", msg: "Set " + s + ": si ferma a " + fin[0] + "-" + fin[1] + ", il set non sarebbe finito. Scout incompleto?" });
+      const winner = done ? (fin[0] > fin[1] ? "loc" : "osp") : null;
+      if (winner === "loc") wl++; else if (winner === "osp") wo++;
+      setInfo.push({ set: s, points: list.length, final: fin, winner, empty: list.filter(p => p.missing).length });
+    });
+    if (wl < 3 && wo < 3) issues.push({ level: "warn", msg: "La partita non risulta finita (set vinti " + wl + "-" + wo + "): lo scout e' parziale?" });
+    points.forEach((p, i) => { p.i = i + 1; });
+    return { team, side, touchList, plist, touches: touchList.filter(t => t.numero !== null).length, points, sets: setInfo, issues, setsWon: [wl, wo] };
+  }
+
+  function loadDvw(text) {
+    const d = parseDvw(text);
+    return fromDvw(d.team, d.touchList, d.plist, d.issues);
+  }
+
+  // Riconosce il formato dal contenuto: xlsx (archivio zip, inizia con "PK") oppure .dvw (testo, di solito in Windows-1252).
+  async function loadScoutFile(buffer) {
+    const b = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    if (b[0] === 0x50 && b[1] === 0x4b) return loadScout(await readXlsx(b));
+    let text = new TextDecoder("utf-8").decode(b);
+    if (text.includes("�")) text = new TextDecoder("windows-1252").decode(b);
+    if (!isDvw(text)) throw new Error("Formato non riconosciuto: serve l'xlsx di Volley Coach oppure un file .dvw (DataVolley).");
+    return loadDvw(text);
+  }
 
   // ---- abbinamento clip <-> punti
   // Le clip "effettive" sono quelle che l'esportazione produce davvero: con Tieni, in ordine, senza quelle
@@ -620,7 +754,7 @@ const ScoutLib = (function () {
     return { pairs, noPoint, noClip, dup, corr, all, suspects, boundaries, issues, eff: eff.length };
   }
 
-  return { readXlsx, parseScout, buildPoints, fromTouches, loadScout, loadScoutFile, ended, target,
+  return { readXlsx, parseScout, buildPoints, fromTouches, loadScout, loadScoutFile, parseDvw, fromDvw, loadDvw, ended, target,
     effectiveClips, autoMatch, analyze, pointLabel };
 })();
 
@@ -841,11 +975,11 @@ const normEdited = list => { list.forEach(r => { if (!("edited" in r)) r.edited 
 const saved = D.empty ? null : store.load();
 if (saved && saved.length) { R = saved; D.deleted = store.loadDeleted(); }
 normEdited(R);
-const scoutMeta = () => (SCOUT ? { file: SCOUT.file, team: SCOUT.team, touchList: SCOUT.touchList } : null);
+const scoutMeta = () => (SCOUT ? Object.assign({ file: SCOUT.file, team: SCOUT.team, touchList: SCOUT.touchList }, SCOUT.plist ? { plist: SCOUT.plist } : {}) : null);
 function restoreScout(m) {
   SCOUT = null;
-  if (m && m.touchList && m.touchList.length) {
-    try { SCOUT = ScoutLib.fromTouches(m.team || "", m.touchList, []); SCOUT.file = m.file || "scout"; } catch (e) { SCOUT = null; }
+  if (m && m.touchList && m.touchList.length) {        // con `plist` lo scout viene da un .dvw: i punti sono gia' espliciti
+    try { SCOUT = m.plist ? ScoutLib.fromDvw(m.team || "", m.touchList, m.plist, []) : ScoutLib.fromTouches(m.team || "", m.touchList, []); SCOUT.file = m.file || "scout"; } catch (e) { SCOUT = null; }
   }
   refreshMatch();
 }
@@ -994,13 +1128,14 @@ function showScout() {
   $("sbody").innerHTML = '<p class="mut">' + esc(s.file) + (s.team ? " &middot; " + esc(s.team) : "") + "</p>" +
     "<p><b>" + s.touches + "</b> tocchi, <b>" + s.points.length + "</b> punti in " + s.sets.length + " set. Set vinti " +
     s.setsWon[0] + "-" + s.setsWon[1] + " (locali-ospiti).</p>" +
-    '<table class="stab"><tr><th>Set</th><th>Punti</th><th>Finale</th><th>Vince</th><th title="Rally senza righe: errore generico o punto generico dell\'avversario, non riportati nell\'xlsx">Senza righe</th></tr>' + rows + "</table>" +
+    '<table class="stab"><tr><th>Set</th><th>Punti</th><th>Finale</th><th>Vince</th><th title="Rally senza tocchi della nostra squadra: errore generico o punto generico dell\'avversario">Senza righe</th></tr>' + rows + "</table>" +
     (errs.length ? '<p class="bad"><b>Da correggere:</b></p><ul>' + errs.map(i => "<li>" + esc(i.msg) + "</li>").join("") + "</ul>" : '<p class="good">Controlli superati: i set rispettano le regole di fine set.</p>') +
     (warns.length ? "<p><b>Da controllare:</b></p><ul>" + warns.map(i => "<li>" + esc(i.msg) + "</li>").join("") + "</ul>" : "") + matchReport();
   $("sdlg").showModal();
 }
 $("scout").onclick = () => $("sfile").click();
-$("sfile").onchange = async e => {
+$("scoutd").onclick = () => $("sfiled").click();
+$("sfile").onchange = $("sfiled").onchange = async e => {
   const f = e.target.files[0]; e.target.value = "";
   if (!f) return;
   let s;
@@ -1111,7 +1246,7 @@ function scoutBar() {
 
 // ---- tabella
 // ---- filtri per scout (valgono per tabella, vista cinema e pulsanti di selezione)
-const FLT = { set: "", player: "", skill: "", grade: "", pos: "", rot: "", won: "" };
+const FLT = { set: "", player: "", skill: "", grade: "", pos: "", rot: "", da: "", a: "", won: "" };
 const fltOn = () => Object.values(FLT).some(Boolean);
 function passScout(r) {
   if (!SCOUT || !fltOn()) return true;
@@ -1119,10 +1254,10 @@ function passScout(r) {
   if (!p) return false;
   if (FLT.set && String(p.set) !== FLT.set) return false;
   if (FLT.won === "err" ? !p.missing : FLT.won && p.winner !== FLT.won) return false;
-  if (FLT.rot && !p.touches.some(t => t.posP === FLT.rot)) return false;          // la rotazione e' la stessa per tutto il punto
-  if (FLT.player || FLT.skill || FLT.grade || FLT.pos) {
+  if (FLT.rot && !(p.rot ? p.rot === FLT.rot : p.touches.some(t => t.posP === FLT.rot))) return false;   // la rotazione e' la stessa per tutto il punto
+  if (FLT.player || FLT.skill || FLT.grade || FLT.pos || FLT.da || FLT.a) {
     return p.touches.some(t => (!FLT.player || t.cognome + "|" + t.numero === FLT.player) && (!FLT.skill || t.tipo === FLT.skill) &&
-      (!FLT.grade || t.voto === FLT.grade) && (!FLT.pos || t.posG === FLT.pos));
+      (!FLT.grade || t.voto === FLT.grade) && (!FLT.pos || t.posG === FLT.pos) && (!FLT.da || t.da === FLT.da) && (!FLT.a || t.a === FLT.a));
   }
   return true;
 }
@@ -1138,12 +1273,16 @@ function fillFilters() {
   opts("fset", "tutti i set", uniq(pts.map(p => p.set)).map(s => [String(s), "Set " + s]));
   const pl = new Map(); tc.filter(t => t.cognome).forEach(t => pl.set(t.cognome + "|" + t.numero, t.cognome + (t.numero !== null ? " #" + t.numero : "")));
   opts("fplayer", "tutti i giocatori", [...pl].sort((a, b) => a[1].localeCompare(b[1])));
-  const order = ["Battuta", "Ricezione", "Alzata", "Attacco", "Muro", "Difesa"], sk = uniq(tc.map(t => t.tipo));
+  const order = ["Battuta", "Ricezione", "Alzata", "Attacco", "Free ball", "Muro", "Difesa"], sk = uniq(tc.map(t => t.tipo));
   opts("fskill", "tutti i fondamentali", sk.sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99 || a.localeCompare(b)).map(s => [s, s]));
   opts("fgrade", "tutti i voti", uniq(tc.map(t => t.voto)).filter(Boolean).sort().map(g => [g, g]));
   const byPos = (a, b) => a.localeCompare(b, "it", { numeric: true });
   opts("fpos", "ogni posizione", uniq(tc.map(t => t.posG)).filter(Boolean).sort(byPos).map(x => [x, "Posizione " + x]));
-  opts("frot", "ogni rotazione", uniq(tc.map(t => t.posP)).filter(Boolean).sort(byPos).map(x => [x, "Rotazione " + x]));
+  opts("frot", "ogni rotazione", uniq(tc.map(t => t.posP).concat(pts.map(p => p.rot))).filter(Boolean).sort(byPos).map(x => [x, "Rotazione " + x]));
+  const zones = k => uniq(tc.map(t => t[k])).filter(Boolean).sort();
+  opts("fda", "da ogni zona", zones("da").map(x => [x, "Da zona " + x]));
+  opts("fa", "a ogni zona", zones("a").map(x => [x, "A zona " + x]));
+  $("fda").hidden = !zones("da").length; $("fa").hidden = !zones("a").length;
   opts("fwon", "chiunque segni", [["loc", "segnano i locali"], ["osp", "segnano gli ospiti"], ["err", "errore avversario"]]);
 }
 function applyFilters() {
@@ -1151,7 +1290,7 @@ function applyFilters() {
   const n = R.filter(r => isVisible(r)).length;
   $("fcount").textContent = fltOn() ? n + " clip corrispondono" : "";
 }
-["fset", "fplayer", "fskill", "fgrade", "fpos", "frot", "fwon"].forEach(id => { $(id).dataset.k = { fset: "set", fplayer: "player", fskill: "skill", fgrade: "grade", fpos: "pos", frot: "rot", fwon: "won" }[id];
+["fset", "fplayer", "fskill", "fgrade", "fpos", "frot", "fda", "fa", "fwon"].forEach(id => { $(id).dataset.k = { fset: "set", fplayer: "player", fskill: "skill", fgrade: "grade", fpos: "pos", frot: "rot", fda: "da", fa: "a", fwon: "won" }[id];
   $(id).onchange = e => { FLT[e.target.dataset.k] = e.target.value; applyFilters(); }; });
 $("fclear").onclick = () => { Object.keys(FLT).forEach(k => { FLT[k] = ""; }); fillFilters(); applyFilters(); };
 
@@ -1192,13 +1331,19 @@ function scoutCell(r) {
 function showTouches(r) {
   const p = r.sp ? SCOUT.points[r.sp - 1] : null;
   if (!p) return;
+  const zn = p.touches.some(t => t.da || t.a);              // zone di partenza e arrivo: solo con lo scout .dvw
   const rows = p.touches.map((t, i) => "<tr><td>" + (i + 1) + "</td><td>" + esc(t.tipo) + "</td><td>" + esc(t.voto) + "</td><td>" + esc(t.cognome) +
-    (t.numero !== null && t.numero !== undefined ? " (" + esc(t.numero) + ")" : "") + "</td><td>" + esc(t.posG) + "</td><td>" + esc(t.posP) + "</td></tr>").join("");
+    (t.numero !== null && t.numero !== undefined ? " (" + esc(t.numero) + ")" : "") + "</td><td>" + esc(t.posG) + "</td><td>" + esc(t.posP) + "</td>" +
+    (zn ? "<td>" + (t.da || t.a ? esc(t.da || "?") + " &rarr; " + esc(t.a || "?") : "") + "</td>" : "") + "</tr>").join("");
+  const gen = p.gen ? (p.gen[1] === "=" ? "errore generico " : "punto generico ") + (p.gen[0] === "loc" ? "dei locali" : "degli ospiti") : "";
+  const lu = p.lineup ? '<p class="mut">In campo' + (p.rot ? " (palleggiatore in " + esc(p.rot) + ")" : "") + ": " +
+    p.lineup.map((n, i) => "P" + (i + 1) + " " + (n === null ? "?" : "#" + n)).join(" &middot; ") + "</p>" : "";
   const idx = sorted().indexOf(r) + 1;
   $("tchbody").innerHTML = '<p class="mut">Clip ' + idx + " &middot; " + fmt(r.start) + " &ndash; " + fmt(r.end) + " (" + (r.end - r.start).toFixed(1) + " s)</p>" +
     "<p><b>" + ScoutLib.pointLabel(p) + "</b>" + (p.winner ? " &middot; punto " + (p.winner === "loc" ? "dei locali" : "degli ospiti") : "") + "</p>" +
-    (p.missing ? '<p class="mut">Nessuna riga nello scout: ' + (p.winner && p.winner !== SCOUT.side ? "punto generico dell'avversario (per esempio un ace)." : "errore generico dell'avversario.") + "</p>"
-      : '<table class="stab"><tr><th>#</th><th>Tocco</th><th>Voto</th><th>Giocatore</th><th>Pos.</th><th>Rot.</th></tr>' + rows + "</table>");
+    (p.missing ? '<p class="mut">Nessun tocco della nostra squadra: ' + (p.winner && p.winner !== SCOUT.side ? "punto generico dell'avversario (per esempio un ace)." : "errore generico dell'avversario.") + "</p>"
+      : '<table class="stab"><tr><th>#</th><th>Tocco</th><th>Voto</th><th>Giocatore</th><th>Pos.</th><th>Rot.</th>' + (zn ? '<th title="Zona di partenza e zona di arrivo del colpo">Zone</th>' : "") + "</tr>" + rows + "</table>" +
+        (gen ? '<p class="mut">Il punto si chiude con: ' + gen + ".</p>" : "")) + lu;
   if (document.fullscreenElement) document.exitFullscreen();      // il popup sta fuori dalla vista cinema a schermo intero
   $("tchdlg").showModal();
 }

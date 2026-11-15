@@ -525,7 +525,8 @@ const ScoutLib = (function () {
   // ---- scout in formato DataVolley (.dvw, file di testo)
   // Sezione [3SCOUT]: una riga per evento, campi separati da ";". Il primo campo e' il codice:
   //   *13RH/        tocco: squadra (* = locali, a = ospiti), numero di maglia, fondamentale, tipo di palla, voto;
-  //                 per battuta, ricezione, attacco e free ball seguono zona di partenza e zona di arrivo
+  //                 per battuta, ricezione, attacco e free ball seguono zona di partenza e zona di arrivo;
+  //                 negli attacchi l'ultima lettera distingue l'attacco (H) dal pallonetto (T)
   //   a$$&H= / #    errore generico / punto generico di una squadra (senza giocatore)
   //   *p04:03       punto assegnato (a chi ha il prefisso) e nuovo punteggio locali:ospiti
   //   **1set        fine del set
@@ -593,7 +594,7 @@ const ScoutLib = (function () {
         continue;
       }
       const numero = Number(c.slice(1, 3)), z = lineup.indexOf(String(numero)) + 1;
-      const t = { id: id++, tipo: DVW_SKILL[c[3]], voto: c[5] === "#" ? "++" : c[5] || "", cognome: names[numero] || "", numero,
+      const t = { id: id++, tipo: c[3] === "A" && c[12] === "T" ? "Pallonetto" : DVW_SKILL[c[3]], voto: c[5] === "#" ? "++" : c[5] || "", cognome: names[numero] || "", numero,
         posG: z ? "P" + z : "", posP, set: s, loc, osp };
       const da = zone(c[9] || ""), a = zone(c[10] || "");
       if (da) t.da = da;
@@ -1273,7 +1274,7 @@ function fillFilters() {
   opts("fset", "tutti i set", uniq(pts.map(p => p.set)).map(s => [String(s), "Set " + s]));
   const pl = new Map(); tc.filter(t => t.cognome).forEach(t => pl.set(t.cognome + "|" + t.numero, t.cognome + (t.numero !== null ? " #" + t.numero : "")));
   opts("fplayer", "tutti i giocatori", [...pl].sort((a, b) => a[1].localeCompare(b[1])));
-  const order = ["Battuta", "Ricezione", "Alzata", "Attacco", "Free ball", "Muro", "Difesa"], sk = uniq(tc.map(t => t.tipo));
+  const order = ["Battuta", "Ricezione", "Alzata", "Attacco", "Pallonetto", "Free ball", "Muro", "Difesa"], sk = uniq(tc.map(t => t.tipo));
   opts("fskill", "tutti i fondamentali", sk.sort((a, b) => (order.indexOf(a) + 99) % 99 - (order.indexOf(b) + 99) % 99 || a.localeCompare(b)).map(s => [s, s]));
   opts("fgrade", "tutti i voti", uniq(tc.map(t => t.voto)).filter(Boolean).sort().map(g => [g, g]));
   const byPos = (a, b) => a.localeCompare(b, "it", { numeric: true });

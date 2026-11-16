@@ -77,6 +77,9 @@ body.cine #vzoom{bottom:0}
 .ci .tg{flex:1;overflow:hidden;text-overflow:ellipsis;color:var(--acc)}
 .ci .n{min-width:28px;color:var(--mut)}
 body.cine #top,body.cine #list{display:none}
+#cine.tch .clipctl{display:none}
+#ctwin[hidden]{display:none}
+.ci .tl{flex:1;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:900px){
   /* telefono / schermo stretto: la pagina intera scorre (il riquadro in alto e' alto quanto lo schermo e l'elenco resterebbe senza spazio) */
   body:not(.cine){height:auto;min-height:100%;overflow:auto;display:block}
@@ -248,9 +251,9 @@ button.on{outline:2px solid var(--acc)}
       </div>
       <div class="row">
         <b id="ctitle"></b>
-        <label>Etichetta <input type="text" list="tags" id="ctag"></label>
-        <label><input type="checkbox" id="ckeep"> Tieni</label>
-        <label><input type="checkbox" id="csel"> Sel.</label>
+        <label class="clipctl">Etichetta <input type="text" list="tags" id="ctag"></label>
+        <label class="clipctl"><input type="checkbox" id="ckeep"> Tieni</label>
+        <label class="clipctl"><input type="checkbox" id="csel"> Sel.</label>
         <button id="cfprev" title="Fotogramma precedente (virgola o Alt+freccia sinistra)">&#9664;|</button>
         <button id="cfnext" title="Fotogramma successivo (punto o Alt+freccia destra)">|&#9654;</button>
         <button id="ctch" hidden>Tocchi</button>
@@ -264,6 +267,11 @@ button.on{outline:2px solid var(--acc)}
   </div>
   <aside id="cpanel">
     <div class="row"><select id="cfilter"></select><span id="ccount" class="mut"></span></div>
+    <div class="row" id="ctwin" hidden>
+      <label title="Secondi di video prima dell'istante del tocco">prima <input type="number" id="ctpre" min="0" max="20" step="0.5" style="width:4em"> s</label>
+      <label title="Secondi di video dopo l'istante del tocco">dopo <input type="number" id="ctpost" min="0" max="20" step="0.5" style="width:4em"> s</label>
+      <button class="sm" id="ctmini" title="Minivideo con i tocchi dell'elenco (le finestre che si sovrappongono si uniscono)">Minivideo dei tocchi&hellip;</button>
+    </div>
     <div id="clist"></div>
   </aside>
 </div>
@@ -1729,18 +1737,78 @@ $("seltag").onchange = e => { const t = e.target.value; if (t) R.forEach(r => { 
 // ---- vista cinema: video grande, elenco delle clip a destra, riproduzione in sequenza
 let cine = false, scrubbing = false;
 const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+// ---- revisione per tocco (scout fatto nella pagina: ogni tocco ha il suo istante `t`)
+const TW = { pre: 2, post: 3 };
+try { const w = JSON.parse(localStorage.getItem("volleycut:tchwin") || "null"); if (w) Object.assign(TW, w); } catch (e) { /* valori di partenza */ }
+const tchAvail = () => !!(SCOUT && SCOUT.touchList.some(t => typeof t.t === "number" && t.numero !== null));
+function tchPass(t, p) {
+  if (FLT.set && String(p.set) !== FLT.set) return false;
+  if (FLT.won && FLT.won !== "err" && p.winner !== FLT.won) return false;
+  if (FLT.rot && (t.posP || p.rot) !== FLT.rot) return false;
+  return (!FLT.player || t.cognome + "|" + t.numero === FLT.player) && (!FLT.skill || t.tipo === FLT.skill) && (!FLT.grade || t.voto === FLT.grade) &&
+    (!FLT.pos || t.posG === FLT.pos) && (!FLT.det || ScoutLib.dvMatch(t, FLT.det, SCOUT.dv)) && (!FLT.da || t.da === FLT.da) && (!FLT.a || t.a === FLT.a);
+}
+let tchCache = { key: "", list: [] };
+function tchList() {
+  if (!tchAvail()) return [];
+  const key = SCOUT.touchList.length + "|" + JSON.stringify(FLT) + "|" + TW.pre + "|" + TW.post + "|" + (SCOUT.plist || []).length;
+  if (tchCache.scout === SCOUT && tchCache.key === key) return tchCache.list;
+  const list = [];
+  for (const p of SCOUT.points) for (const t of p.touches) {
+    if (typeof t.t !== "number" || t.numero === null || !tchPass(t, p)) continue;
+    list.push({ tch: t, p, start: Math.max(0, t.t - TW.pre), end: Math.min(DUR, t.t + TW.post) });
+  }
+  list.sort((a, b) => a.tch.t - b.tch.t);
+  tchCache = { scout: SCOUT, key, list };
+  return list;
+}
+const tchLabel = w => { const t = w.tch; return ScoutLib.pointLabel(w.p) + " · #" + t.numero + " " + (t.cognome || "") + " · " + t.tipo + " " + t.voto +
+  (t.da || t.a ? " " + (t.da || "?") + "→" + (t.a || "?") : ""); };
+const tchMode = () => cine && $("cfilter").value === "tch";
+// finestre per il minivideo: quelle sovrapposte si uniscono
+function tchMerged() {
+  const out = [];
+  for (const w of tchList().slice().sort((a, b) => a.start - b.start)) {
+    const VT = { "++": "pp", "+": "p", "!": "e", "-": "m", "/": "b", "=": "err" };   // voto nel nome del file
+    const tag = (w.tch.numero + "_" + w.tch.tipo.replace(/\s+/g, "").slice(0, 3) + "_" + (VT[w.tch.voto] || "")).replace(/[^A-Za-z0-9_]/g, "");
+    const last = out[out.length - 1];
+    if (last && w.start <= last.end) { last.end = Math.max(last.end, w.end); last.tags.push(tag); }
+    else out.push({ start: w.start, end: w.end, tags: [tag] });
+  }
+  return out.map(w => ({ start: w.start, end: w.end, tag: w.tags.join("+").slice(0, 60) }));
+}
 function playlist() {
+  if (tchMode()) return tchList();
   const f = $("cfilter").value || "keep";
   return sorted().filter(passScout).filter(r => f === "keep" ? r.keep : f === "sel" ? r.sel : f === "dub" ? r.dubious
     : f.startsWith("tag:") ? (r.tag || "").trim() === f.slice(4) : true);
 }
 function renderCine() {
   if (!cine) return;
-  const cf = $("cfilter"), cur = cf.value || "keep";
+  const cf = $("cfilter"), cur = cf.value || (tchAvail() ? "tch" : "keep");
   const tags = [...new Set(R.map(r => (r.tag || "").trim()).filter(Boolean))].sort();
-  cf.innerHTML = '<option value="keep">Clip con Tieni</option><option value="sel">Selezionate</option><option value="dub">Dubbi</option><option value="all">Tutte</option>' +
+  cf.innerHTML = (tchAvail() ? '<option value="tch">Tocchi filtrati (scout fatto nella pagina)</option>' : "") +
+    '<option value="keep">Clip con Tieni</option><option value="sel">Selezionate</option><option value="dub">Dubbi</option><option value="all">Tutte</option>' +
     tags.map(t => '<option value="tag:' + esc(t) + '">Etichetta: ' + esc(t) + "</option>").join("");
   cf.value = [...cf.options].some(o => o.value === cur) ? cur : "keep";
+  const tm = tchMode();
+  $("cine").classList.toggle("tch", tm); $("ctwin").hidden = !tm;
+  if (tm) {
+    if (document.activeElement !== $("ctpre")) $("ctpre").value = TW.pre;
+    if (document.activeElement !== $("ctpost")) $("ctpost").value = TW.post;
+    const T = tchList();
+    $("ccount").textContent = T.length + " tocchi";
+    $("clist").innerHTML = T.map((w, i) => '<div class="ci' + (w === sel ? " on" : "") + '" data-i="' + i + '"><span class="n">' + (i + 1) + '</span><span class="mut">' + fmt(w.tch.t) +
+      '</span><span class="tl">' + esc(tchLabel(w)) + '</span><button class="sm" data-a="at" title="Video fermo all\'istante del tocco (per la foto)">&#9208;</button></div>').join("");
+    $("clist").querySelectorAll(".ci").forEach(el => {
+      const w = T[+el.dataset.i];
+      el.onclick = e => { if (e.target.closest("button")) return; playClip(w); };
+      el.querySelector("button").onclick = () => { sel = w; v.pause(); seek(w.tch.t); renderCine(); };
+    });
+    const on = $("clist").querySelector(".ci.on"); if (on) on.scrollIntoView({ block: "nearest" });
+    syncBar();
+    return;
+  }
   const P = playlist(), tot = P.reduce((a, r) => a + (r.end - r.start), 0);
   $("ccount").textContent = P.length + " clip, " + (tot / 60).toFixed(1) + " min";
   $("clist").innerHTML = P.map((r, i) => '<div class="ci' + (r === sel ? " on" : "") + (r.keep ? "" : " off") + '" data-i="' + i + '">' +
@@ -1759,12 +1827,13 @@ function renderCine() {
 }
 function syncBar() {
   const P = playlist(), i = P.indexOf(sel);
-  $("ctitle").textContent = sel && i >= 0 ? "Clip " + (i + 1) + " di " + P.length : (sel ? "Clip fuori elenco" : "Scegli una clip");
+  $("ctitle").textContent = tchMode() ? (sel && i >= 0 ? "Tocco " + (i + 1) + " di " + P.length + " \u00b7 " + tchLabel(sel) : "Scegli un tocco")
+    : sel && i >= 0 ? "Clip " + (i + 1) + " di " + P.length : (sel ? "Clip fuori elenco" : "Scegli una clip");
   if (document.activeElement !== $("ctag")) $("ctag").value = sel ? sel.tag || "" : "";
   $("ctch").hidden = !(SCOUT && sel && sel.sp && SCOUT.points[sel.sp - 1]);
   $("ckeep").checked = !!(sel && sel.keep); $("csel").checked = !!(sel && sel.sel);
 }
-function playClip(r) { sel = r; seek(r.start); v.play(); renderCine(); renderRows(); }
+function playClip(r) { sel = r; seek(r.start); v.play(); renderCine(); if (!r.tch) renderRows(); }
 function stepClip(d) {
   const P = playlist(); if (!P.length) return;
   let i = P.indexOf(sel);
@@ -1785,6 +1854,7 @@ function cineTick() {
   $("cplay").innerHTML = v.paused ? "&#9654;" : "&#10074;&#10074;";
 }
 function setCine(on) {
+  if (!on && sel && sel.tch) sel = null;                       // la finestra di un tocco non e' una clip
   cine = on; document.body.classList.toggle("cine", on); $("cine").hidden = !on;
   v.controls = !on;
   (on ? $("cvid") : $("vbox")).prepend(v);
@@ -1794,7 +1864,14 @@ function setCine(on) {
 }
 $("gocine").onclick = () => setCine(true);
 $("cback").onclick = () => setCine(false);
-$("cfilter").onchange = renderCine;
+$("cfilter").onchange = () => { if (sel && sel.tch !== undefined !== tchMode()) sel = null; renderCine(); };
+const twSet = () => {
+  TW.pre = clamp(+$("ctpre").value || 0, 0, 20); TW.post = clamp(+$("ctpost").value || 0, 0, 20);
+  try { localStorage.setItem("volleycut:tchwin", JSON.stringify(TW)); } catch (e) { /* solo per questa sessione */ }
+  sel = null; renderCine();
+};
+$("ctpre").onchange = $("ctpost").onchange = twSet;
+$("ctmini").onclick = () => { if (!tchList().length) { alert("Nessun tocco nell'elenco."); return; } miniTch = true; $("dname").value = "tocchi"; miniState(); $("dlg").showModal(); };
 $("cprev").onclick = () => stepClip(-1);
 $("cnext").onclick = () => stepClip(1);
 $("cplay").onclick = () => {
@@ -1891,24 +1968,26 @@ function miniCmd(name, mode, jsonRef) {
   const where = D.cli.match ? ["--match", q(D.cli.match)] : [q(D.cli.video), "--out", q(D.cli.out)];
   return ["python", q(D.cli.script), ...where, "--from-json", jsonRef, "--" + mode, "--name", name].join(" ");
 }
+let miniTch = false;                                       // minivideo dai tocchi filtrati invece che dalle clip selezionate
+const miniSel = () => (miniTch ? tchMerged() : chosen());
 function miniState() {
   const name = safeName($("dname").value), mode = document.querySelector('input[name=dm]:checked').value;
-  const s = chosen(), tot = s.reduce((a, r) => a + (r.end - r.start), 0);
-  $("dsum").textContent = s.length + " clip, " + (tot / 60).toFixed(1) + " min.";
+  const s = miniSel(), tot = s.reduce((a, r) => a + (r.end - r.start), 0);
+  $("dsum").textContent = (miniTch ? s.length + " spezzoni dai tocchi (" + tchList().length + " tocchi), " : s.length + " clip, ") + (tot / 60).toFixed(1) + " min.";
   $("dcmd").value = miniCmd(name, mode, q(name + ".json")) + (D.cli.script ? "" : "\n(salva .json e .bat nella cartella della partita; VOLLEYCUT = cartella di volley_cut.py)");
   return { name, mode };
 }
 function download(name, text, type) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; a.click();
 }
-$("mini").onclick = () => { miniState(); $("dlg").showModal(); };
+$("mini").onclick = () => { miniTch = false; miniState(); $("dlg").showModal(); };
 $("dname").oninput = miniState;
 document.querySelectorAll("input[name=dm]").forEach(e => e.onchange = miniState);
 $("dclose").onclick = () => $("dlg").close();
 $("dcopy").onclick = () => { $("dcmd").select(); try { navigator.clipboard.writeText($("dcmd").value); } catch (e) { document.execCommand("copy"); } };
 $("dmake").onclick = () => {
   const { name, mode } = miniState();
-  const rs = chosen().map((r, i) => Object.assign({}, r, { n: i + 1, keep: true, dubious: false, duration: r.end - r.start }));
+  const rs = miniSel().map((r, i) => Object.assign({}, r, { n: i + 1, keep: true, dubious: false, duration: r.end - r.start }));
   download(name + ".json", JSON.stringify({ meta: Object.assign({}, D.meta, { minivideo: name }), rallies: rs }, null, 2), "application/json");
   // la pagina online non conosce il percorso di volley_cut.py: il .bat usa la variabile VOLLEYCUT e trova da solo la cartella
   // della partita (anche se il file e' stato messo in una sua sottocartella, per esempio export)

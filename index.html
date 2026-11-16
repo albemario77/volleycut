@@ -3051,9 +3051,22 @@ $("lmok").onclick = () => {
 // ---- impostazione del set
 let lsPairSet = false;
 const rOpt = (list, cur, none) => (none !== undefined ? '<option value="">' + none + "</option>" : "") +
-  list.map(p => '<option value="' + p.n + '"' + (p.n === cur ? " selected" : "") + ">#" + p.n + " " + esc(p.cog || p.sop || "") + "</option>").join("");
+  list.map(p => '<option value="' + p.n + '"' + (p.n === cur ? " selected" : "") + ">" + p.n + " " + esc(p.cog || p.sop || "") + "</option>").join("");
 function lsLu() { return [1, 2, 3, 4, 5, 6].map(z => { const s = document.querySelector('#lszones select[data-z="' + z + '"]'); return s && s.value ? +s.value : null; }); }
+// tendine della formazione: la voce comincia col numero (lo si scrive da tastiera per sceglierla), e chi e' gia' in
+// una zona o fa il libero non compare nelle altre tendine
+function lsLists() {
+  const lu = lsLu(), ros = LIVE.roster.slice().sort((a, b) => a.n - b.n), lib = +$("lslib").value || null, lib2 = +$("lslib2").value || null;
+  document.querySelectorAll("#lszones select").forEach(sel => {
+    const cur = sel.value ? +sel.value : null, z = +sel.dataset.z;
+    const taken = lu.filter((n, i) => n !== null && i + 1 !== z).concat([lib, lib2]);
+    sel.innerHTML = rOpt(ros.filter(p => p.r !== "L" && !taken.includes(p.n)), cur, "—");
+  });
+  $("lslib").innerHTML = rOpt(ros.filter(p => !lu.includes(p.n) && p.n !== lib2), lib, "nessuno");
+  $("lslib2").innerHTML = rOpt(ros.filter(p => !lu.includes(p.n) && p.n !== lib), lib2, "nessuno");
+}
 function lsUpdate() {
+  lsLists();
   const lu = lsLu(), ros = LIVE.roster, inLu = ros.filter(p => lu.includes(p.n));
   const cs = +$("lsset").value || (ros.find(p => p.r === "P" && lu.includes(p.n)) || {}).n;
   $("lsset").innerHTML = rOpt(inLu, cs, "—");
@@ -3085,6 +3098,7 @@ function openSetDlg() {
   $("lsdlg").showModal();
 }
 $("lszones").onchange = () => lsUpdate();
+$("lslib").onchange = $("lslib2").onchange = () => lsUpdate();
 $("lsset").onchange = () => { lsPairSet = false; lsUpdate(); };
 $("lsp1").onchange = $("lsp2").onchange = () => { lsPairSet = true; };
 $("lsno").onclick = () => $("lsdlg").close();

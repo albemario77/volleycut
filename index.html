@@ -1740,26 +1740,38 @@ const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(
 // ---- revisione per tocco (scout fatto nella pagina: ogni tocco ha il suo istante `t`)
 const TW = { pre: 2, post: 3 };
 try { const w = JSON.parse(localStorage.getItem("volleycut:tchwin") || "null"); if (w) Object.assign(TW, w); } catch (e) { /* valori di partenza */ }
-const tchAvail = () => !!(SCOUT && SCOUT.touchList.some(t => typeof t.t === "number" && t.numero !== null));
+// scout con gli istanti dei tocchi: quello in uso se e' fatto nella pagina; se la partita ha anche lo scout importato
+// (che resta quello dei filtri per clip) si usa comunque lo scout fatto nella pagina
+let tsCache = { lr: null, s: null };
+function TS() {
+  if (SCOUT && SCOUT.live) return SCOUT;
+  if (typeof LR === "undefined" || !LR || !LR.plist.length) return null;
+  if (tsCache.lr !== LR) {
+    const d = LV.scout(LIVE);
+    tsCache = { lr: LR, s: ScoutLib.fromDvw(d.team, d.touchList, d.plist, [], d.dv) };
+  }
+  return tsCache.s;
+}
+const tchAvail = () => { const S = TS(); return !!(S && S.touchList.some(t => typeof t.t === "number" && t.numero !== null)); };
 function tchPass(t, p) {
   if (FLT.set && String(p.set) !== FLT.set) return false;
   if (FLT.won && FLT.won !== "err" && p.winner !== FLT.won) return false;
   if (FLT.rot && (t.posP || p.rot) !== FLT.rot) return false;
   return (!FLT.player || t.cognome + "|" + t.numero === FLT.player) && (!FLT.skill || t.tipo === FLT.skill) && (!FLT.grade || t.voto === FLT.grade) &&
-    (!FLT.pos || t.posG === FLT.pos) && (!FLT.det || ScoutLib.dvMatch(t, FLT.det, SCOUT.dv)) && (!FLT.da || t.da === FLT.da) && (!FLT.a || t.a === FLT.a);
+    (!FLT.pos || t.posG === FLT.pos) && (!FLT.det || ScoutLib.dvMatch(t, FLT.det, TS().dv)) && (!FLT.da || t.da === FLT.da) && (!FLT.a || t.a === FLT.a);
 }
 let tchCache = { key: "", list: [] };
 function tchList() {
   if (!tchAvail()) return [];
-  const key = SCOUT.touchList.length + "|" + JSON.stringify(FLT) + "|" + TW.pre + "|" + TW.post + "|" + (SCOUT.plist || []).length;
-  if (tchCache.scout === SCOUT && tchCache.key === key) return tchCache.list;
+  const S = TS(), key = JSON.stringify(FLT) + "|" + TW.pre + "|" + TW.post;
+  if (tchCache.scout === S && tchCache.key === key) return tchCache.list;
   const list = [];
-  for (const p of SCOUT.points) for (const t of p.touches) {
+  for (const p of S.points) for (const t of p.touches) {
     if (typeof t.t !== "number" || t.numero === null || !tchPass(t, p)) continue;
     list.push({ tch: t, p, start: Math.max(0, t.t - TW.pre), end: Math.min(DUR, t.t + TW.post) });
   }
   list.sort((a, b) => a.tch.t - b.tch.t);
-  tchCache = { scout: SCOUT, key, list };
+  tchCache = { scout: S, key, list };
   return list;
 }
 const tchLabel = w => { const t = w.tch; return ScoutLib.pointLabel(w.p) + " · #" + t.numero + " " + (t.cognome || "") + " · " + t.tipo + " " + t.voto +

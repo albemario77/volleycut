@@ -1023,8 +1023,92 @@ const ScoutLib = (function () {
     return { pairs, noPoint, noClip, dup, corr, all, suspects, boundaries, issues, eff: eff.length };
   }
 
+  // ---- motore delle regole (modulo 5-1): rotazione, libero, posizioni, punteggio, cambi.
+  // Funzioni pure: ogni operazione restituisce uno stato nuovo, cosi' una correzione si rigioca dall'inizio del set.
+  // Stato: { set, lu: [giocatrici in zona 1..6, senza libero], setter, serve (true = battiamo noi),
+  //          lib (libero in uso), lib2 (libero di riserva), pair: [le due con cui si cambia il libero], score: [noi, loro] }
+  // I ruoli si ricavano dal posto in formazione rispetto alla palleggiatrice (dopo di lei: banda, centrale, opposto,
+  // banda, centrale), non dalla rosa: nei file della stagione una giocatrice gioca a volte fuori ruolo.
+  const ROLE_AT = ["P", "B", "C", "O", "B", "C"];
+  const zoneOf = (st, n) => st.lu.indexOf(n) + 1;
+  const front = z => z >= 2 && z <= 4;
+
+  // coppia proposta: le due che sarebbero in P6 e P3 con la palleggiatrice in P1
+  function rulesPair(lu, setter) {
+    const k = lu.indexOf(setter);
+    if (k < 0) return [];
+    return [lu[(k + 5) % 6], lu[(k + 2) % 6]];
+  }
+  function rulesStart(o) {
+    if (!o.lu || o.lu.length !== 6 || new Set(o.lu).size !== 6 || o.lu.some(n => n === null || n === undefined)) throw new Error("La formazione deve avere sei giocatrici diverse.");
+    if (!o.lu.includes(o.setter)) throw new Error("La palleggiatrice deve essere in campo.");
+    return { set: o.set || 1, lu: o.lu.slice(), setter: o.setter, serve: !!o.serve, lib: o.lib ?? null, lib2: o.lib2 ?? null,
+      pair: (o.pair && o.pair.length ? o.pair : rulesPair(o.lu, o.setter)).slice(), score: [0, 0] };
+  }
+  // zona della palleggiatrice (1..6): la "rotazione" P1..P6
+  const rulesRot = st => zoneOf(st, st.setter);
+  const rulesRole = (st, n) => { const z = zoneOf(st, n); return z ? ROLE_AT[(z - rulesRot(st) + 6) % 6] : n === st.lib ? "L" : ""; };
+  // chi sta sostituendo il libero: quella della coppia in seconda linea, tranne quando e' in zona 1 e battiamo noi
+  // (batte lei; il libero entra dopo che si e' perso il punto)
+  function rulesLibero(st) {
+    if (st.lib === null || st.lib === undefined) return null;
+    const back = st.pair.filter(n => { const z = zoneOf(st, n); return z && !front(z); });
+    const can = back.filter(n => !(st.serve && zoneOf(st, n) === 1));
+    return can.length ? can[0] : null;                                  // coppia non opposta (due in seconda linea): la prima
+  }
+  // le sei in campo zona per zona, con il libero al posto di chi sostituisce
+  function rulesCourt(st) {
+    const out = rulesLibero(st);
+    return st.lu.map(n => (n === out ? st.lib : n));
+  }
+  // punto: noi o loro (won = true se l'abbiamo vinto). Si ruota solo vincendo il punto quando batteva l'avversario.
+  function rulesPoint(st, won) {
+    const n = Object.assign({}, st, { score: won ? [st.score[0] + 1, st.score[1]] : [st.score[0], st.score[1] + 1] });
+    n.rotated = !!(won && !st.serve);
+    if (n.rotated) n.lu = st.lu.slice(1).concat(st.lu.slice(0, 1));               // chi era in zona 2 va in zona 1 e batte
+    n.serve = !!won;
+    n.over = ended(st.set, n.score[0], n.score[1]);
+    return n;
+  }
+  // cambio: esce `out`, entra `inn`. Se esce il libero si cambia il libero; chi entra eredita posto, ruolo e coppia.
+  function rulesSub(st, out, inn) {
+    const n = Object.assign({}, st, { lu: st.lu.slice(), pair: st.pair.slice() });
+    delete n.rotated;
+    if (out === st.lib) {
+      n.lib = inn;
+      if (inn === st.lib2) n.lib2 = out;
+      return n;
+    }
+    const k = st.lu.indexOf(out);
+    if (k < 0) throw new Error("La #" + out + " non e' in campo.");
+    if (st.lu.includes(inn) || inn === st.lib) throw new Error("La #" + inn + " e' gia' in campo.");
+    n.lu[k] = inn;
+    if (st.setter === out) n.setter = inn;
+    n.pair = n.pair.map(x => (x === out ? inn : x));
+    return n;
+  }
+  // posizioni nello scambio. phase "start" = battuta e ricezione: ognuna nella sua zona di rotazione, libero al posto
+  // di chi sostituisce. phase "play" = dal tocco successivo, secondo il ruolo (tabella confermata dall'utente):
+  // palleggiatrice e opposto P2/P1, bande P4/P6, centrali P3/P5, libero P5 (P6 se sostituisce una banda).
+  // In ricezione con la palleggiatrice in P1 l'opposto (zona 4) attacca da P4 e la banda di prima linea (zona 2) da P2.
+  function rulesPlaces(st, phase) {
+    const court = rulesCourt(st), out = rulesLibero(st), o = {};
+    if (phase === "start") { court.forEach((n, i) => { o[n] = "P" + (i + 1); }); return o; }
+    const swap = !st.serve && rulesRot(st) === 1;
+    st.lu.forEach((n, i) => {
+      const z = i + 1, r = rulesRole(st, n), f = front(z);
+      let p = r === "P" || r === "O" ? (f ? 2 : 1) : r === "B" ? (f ? 4 : 6) : f ? 3 : 5;
+      if (swap && f && r === "O") p = 4;
+      if (swap && f && r === "B") p = 2;
+      o[n === out ? st.lib : n] = "P" + p;
+    });
+    return o;
+  }
+  const Rules = { start: rulesStart, pair: rulesPair, rot: rulesRot, role: rulesRole, libero: rulesLibero, court: rulesCourt,
+    point: rulesPoint, sub: rulesSub, places: rulesPlaces };
+
   return { readXlsx, parseScout, buildPoints, fromTouches, loadScout, loadScoutFile, parseDvw, fromDvw, loadDvw, toDvw, dvwBytes, dvDetails, dvEval, dvFilterOptions, dvFixed, dvShown, dvMatch, ended, target,
-    effectiveClips, autoMatch, analyze, pointLabel };
+    effectiveClips, autoMatch, analyze, pointLabel, Rules };
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = ScoutLib;

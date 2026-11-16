@@ -95,7 +95,8 @@ body.svon #top,body.svon #list{display:none}
 #svstage{display:flex;flex-direction:column;min-height:0;padding:10px 16px;gap:6px}
 #svid{flex:1;min-height:0;background:#000;border-radius:6px;display:flex;position:relative}
 #svid video{width:100%;height:100%;max-height:none;object-fit:contain;border-radius:6px}
-#svpanel{border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;padding:8px 10px;overflow:auto;gap:2px}
+#svpanel{border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;padding:8px 10px;overflow:hidden;gap:2px}
+#svpanel>*{flex:none}
 #svhead .row{margin:2px 0}
 #svcourt{width:100%;height:auto;display:block;user-select:none;touch-action:none;cursor:crosshair;margin:2px 0}
 #svcourt .cbg{fill:var(--bg)}
@@ -125,13 +126,14 @@ body.svon #top,body.svon #list{display:none}
 .vg th{font-weight:600;color:var(--mut);background:none}.vg button{min-width:46px}
 button.on{outline:2px solid var(--acc)}
 #svbtns button,#svbtns2 button{padding:3px 7px}
-#svlast{border-top:1px solid var(--line);margin-top:4px}
+#svpanel>#svlast{flex:1 1 0;min-height:140px;overflow:auto;border-top:1px solid var(--line);margin-top:4px}
+#svlast .lh{position:sticky;top:0;background:var(--bg);padding:4px 6px}
 #svlast .ci{padding:3px 6px;gap:6px}
 #svlast .ci .tg{color:var(--fg)}
 .lsgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 10px;margin:6px 0}
 .lsgrid select{width:100%}
 #lmros input[type=text]{width:9em}#lmros input[type=number]{width:4.2em}
-@media (max-width:900px){#sv{grid-template-columns:1fr;grid-template-rows:minmax(0,40vh) auto}#svpanel{border-left:0;border-top:1px solid var(--line)}}
+@media (max-width:900px){#sv{grid-template-columns:1fr;grid-template-rows:minmax(0,40vh) auto}#svpanel{border-left:0;border-top:1px solid var(--line);overflow:auto}#svpanel>#svlast{flex:none;max-height:50vh}}
 </style>
 </head>
 <body>
@@ -282,14 +284,14 @@ button.on{outline:2px solid var(--acc)}
       <button id="svmatch">Partita e rosa&hellip;</button>
       <button id="svexp" title="Scarica lo scout in un file .dvw da importare in Volleyball Scout">Esporta .dvw</button>
       <details class="mut"><summary>Tasti</summary>
-        Numero di maglia, poi la lettera: <kbd>B</kbd> battuta <kbd>R</kbd> ricezione <kbd>A</kbd> attacco <kbd>P</kbd> pallonetto <kbd>L</kbd> free ball
-        <kbd>D</kbd> difesa <kbd>E</kbd> alzata <kbd>M</kbd> muro (per chi batte la lettera si puo' saltare). Battuta, attacco, pallonetto, free ball: zona di partenza e
-        di arrivo (1-9), <kbd>M</kbd> tra le due se l'attacco e' murato, <kbd>T</kbd> cambia il tipo di battuta. Voto: <kbd>#</kbd> <kbd>+</kbd> <kbd>!</kbd> <kbd>-</kbd> <kbd>/</kbd> <kbd>=</kbd>
+        Numero di maglia, poi la lettera: <kbd>B</kbd> battuta <kbd>R</kbd> ricezione <kbd>A</kbd> attacco <kbd>S</kbd> pallonetto <kbd>F</kbd> free ball
+        <kbd>D</kbd> difesa <kbd>E</kbd> alzata <kbd>W</kbd> muro (per chi batte la lettera si puo' saltare). Battuta, attacco, pallonetto, free ball: zona di partenza e
+        di arrivo (1-9), <kbd>X</kbd> tra le due se l'attacco e' murato, <kbd>T</kbd> cambia il tipo di battuta. Voto: <kbd>#</kbd> <kbd>+</kbd> <kbd>!</kbd> <kbd>-</kbd> <kbd>/</kbd> <kbd>=</kbd>
         oppure <kbd>1</kbd>-<kbd>6</kbd>. Esempio: <kbd>12</kbd> <kbd>A</kbd> <kbd>4</kbd> <kbd>6</kbd> <kbd>#</kbd>.<br>
         <kbd>Backspace</kbd> annulla (dentro un tocco: l'ultimo tasto) &middot; <kbd>Esc</kbd> abbandona il tocco &middot; <kbd>F1</kbd>/<kbd>F2</kbd> nostro ER/PT &middot;
         <kbd>F3</kbd>/<kbd>F4</kbd> ER/PT avversario &middot; <kbd>F5</kbd>/<kbd>F6</kbd> time-out nostro/avversario &middot; <kbd>F7</kbd> provvedimento &middot; <kbd>F8</kbd> cambio &middot; <kbd>F9</kbd> nota.<br>
         Video: <kbd>spazio</kbd> play/pausa &middot; frecce &plusmn;5 s (con <kbd>maiusc</kbd> &plusmn;1 s) &middot; <kbd>,</kbd> <kbd>.</kbd> fotogramma.
-        Nella vista Scout alzata e free ball usano <kbd>E</kbd> e <kbd>L</kbd> perche' <kbd>Z</kbd> e <kbd>F</kbd> sono gia' zoom e foto del video.</details>
+        Le lettere sono tutte a sinistra: la mano sinistra sceglie il fondamentale. Nella vista Scout <kbd>F</kbd> e <kbd>Z</kbd> non sono foto e zoom del video.</details>
       <span style="flex:1"></span>
       <button id="svback">Torna alla revisione</button>
     </div>
@@ -2570,7 +2572,9 @@ const LV = ScoutLib.Live, RU = ScoutLib.Rules;
 let LIVE = null, LR = null, svOn = false, C = null;      // C = tocco in composizione
 const VOTES = ["#", "+", "!", "-", "/", "="], VL = x => (x === "#" ? "++" : x);
 const SKN = { S: "Battuta", R: "Ricezione", A: "Attacco", P: "Pallonetto", F: "Free ball", D: "Difesa", E: "Alzata", B: "Muro" };
-const SKK = { S: "B", R: "R", A: "A", P: "P", F: "L", D: "D", E: "E", B: "M" };          // lettera da tastiera
+// lettere da tastiera tutte nella meta' sinistra (la mano destra resta su numeri e voti); nella vista Scout F e Z
+// non sono foto e zoom del video
+const SKK = { S: "B", R: "R", A: "A", P: "S", F: "F", D: "D", E: "E", B: "W" };
 const KEYSK = {}; Object.keys(SKK).forEach(s => { KEYSK[SKK[s].toLowerCase()] = s; });
 const BTN = { H: "float piedi a terra", M: "float in salto", Q: "jump spin" }, BTO = ["H", "M", "Q"];
 const TRACK = s => "SAPF".includes(s);
@@ -2712,7 +2716,7 @@ function svKey(e) {
   if (/^[0-9]$/.test(k)) { svDigit(+k); return true; }
   if (C && C.n) {
     if (kl === "t" && C.s === "S") { C.bt = BTO[(BTO.indexOf(C.bt || "H") + 1) % 3]; svRender(); return true; }
-    if (kl === "m" && C.step === "track" && (C.s === "A" || C.s === "P") && (C.z0 || C.p0) && !(C.z1 || C.p1)) { C.blk = true; svRender(); return true; }
+    if (kl === "x" && C.step === "track" && (C.s === "A" || C.s === "P") && (C.z0 || C.p0) && !(C.z1 || C.p1)) { C.blk = true; svRender(); return true; }
     if (KEYSK[kl] && (C.step === "num" || C.step === "skill" || C.step === "track" && !C.z0 && !C.p0)) { setSkill(KEYSK[kl]); return true; }
     if (VOTES.includes(k)) { commitVote(k); return true; }
   }
@@ -2828,7 +2832,7 @@ function svComp() {
   const zz = (C.z0 || (C.p0 && LV.zoneAt(...C.p0)) || "") + (C.blk || C.pm ? " M " : C.z0 || C.p0 ? "→" : "") + (C.z1 || (C.p1 && LV.zoneAt(...C.p1)) || "");
   const txt = [fmt(C.t), C.n ? "#" + C.n + " " + esc(pname(+C.n)) : "", C.s ? SKN[C.s] + (C.s === "S" ? " (" + BTN[C.bt || "H"] + ")" : "") : "", zz, "…"].filter(Boolean).join("  ");
   const hint = { num: "numero di maglia, poi la lettera del fondamentale", skill: "fondamentale e voto qui sotto, oppure traccia sul campo (attacco, pallonetto, free ball)",
-    track: "traccia: partenza e arrivo (due clic o trascina; da tastiera zone 1-9" + (C.s === "A" || C.s === "P" ? ", M se murato" : "") + (C.s === "S" ? ", T tipo di battuta" : "") + "), oppure il voto senza traccia",
+    track: "traccia: partenza e arrivo (due clic o trascina; da tastiera zone 1-9" + (C.s === "A" || C.s === "P" ? ", X se murato" : "") + (C.s === "S" ? ", T tipo di battuta" : "") + "), oppure il voto senza traccia",
     vote: "voto: ++ + ! - / = (simboli o tasti 1-6)" }[C.step] || "";
   el.innerHTML = esc(txt) + '<div class="h">' + hint + " &middot; Esc abbandona</div>";
 }
@@ -2854,8 +2858,8 @@ function svGrid() {
 function svLast() {
   const el = $("svlast");
   if (!LIVE) { el.innerHTML = ""; return; }
-  const n = LIVE.ev.length, from = Math.max(0, n - 10);
-  el.innerHTML = '<div class="mut" style="padding:4px 6px">Ultimi inserimenti (clic: rivedi da 2 s prima)</div>' +
+  const from = 0;                                           // tutti, dal piu' recente; la lista scorre
+  el.innerHTML = '<div class="mut lh">Inserimenti, dal pi&ugrave; recente (' + LIVE.ev.length + ') &middot; clic: rivedi da 2 s prima</div>' +
     LIVE.ev.slice(from).map((e, j) => [e, from + j]).reverse().map(([e, i]) => '<div class="ci" data-i="' + i + '"><span class="n">' + fmt(e.t) +
     '</span><span class="tg">' + esc(evText(e)) + '</span><button class="sm" data-d="-1" title="Anticipa di 0,1 s">&minus;0,1</button><button class="sm" data-d="1" title="Ritarda di 0,1 s">+0,1</button></div>').join("");
   el.querySelectorAll(".ci").forEach(r => {

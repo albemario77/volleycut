@@ -324,6 +324,9 @@ button.on{outline:2px solid var(--acc)}
   <h2>Partita e rosa</h2>
   <div class="row"><label>Data <input type="date" id="lmdate"></label><label>Ora <input type="text" id="lmtime" placeholder="20.30" style="width:5em"></label>
     <label><input type="radio" name="lmha" value="1"> in casa</label><label><input type="radio" name="lmha" value="0"> in trasferta</label></div>
+  <div class="row"><label>Squadra <select id="lmteam"></select></label>
+    <button class="sm" id="lmrose" title="Il file con le rose delle squadre (rose.json nella cartella della stagione): si sceglie una volta, poi la pagina lo rilegge da sola">File delle rose&hellip;</button>
+    <input type="file" id="lmrfile" accept=".json,application/json" hidden><span class="mut" id="lmrinfo"></span></div>
   <div class="row"><label>Nostra squadra <input type="text" id="lmus"></label><label>Avversari <input type="text" id="lmthem"></label></div>
   <div class="row"><b>Rosa</b><button class="sm" id="lmadd">+ giocatrice</button><button class="sm" id="lmdvw">Importa da un .dvw&hellip;</button>
     <button class="sm" id="lmsc" hidden>Prendi dallo scout caricato</button><input type="file" id="lmfile" accept=".dvw,text/plain,application/octet-stream" hidden>
@@ -2821,6 +2824,7 @@ function svHead() {
   if (LR.phase === "setup") x += '<div class="row"><button class="pri" id="svsetb">Imposta il set ' + (LR.sets.length + 1) + "&hellip;</button></div>";
   if (LR.phase === "over") x += '<p class="good">Partita finita (set ' + won[0] + "-" + won[1] + ").</p>";
   if (LR.issues.length) x += '<p class="bad">' + esc(LR.issues[LR.issues.length - 1]) + "</p>";
+  if (svNote) { x += '<p class="mut">' + esc(svNote) + "</p>"; svNote = ""; }
   const lt = LR.rally[LR.rally.length - 1];
   if (lt && lt.cod && lt.cod[0] === "A" && lt.voto === "/") x += '<p class="sus">Attacco murato: se il muro avversario ha fatto punto premi PT loro (F4).</p>';
   h.innerHTML = x;
@@ -2924,6 +2928,82 @@ function lmRead() {
   return [...$("lmros").tBodies[0].rows].map(tr => { const i = tr.querySelectorAll("input"); return { n: parseInt(i[0].value, 10), cog: i[1].value.trim(), nome: i[2].value.trim(), sop: i[3].value.trim(), r: tr.querySelector("select").value }; })
     .filter(p => Number.isFinite(p.n));
 }
+// ---- rose delle squadre: un file rose.json (di solito nella cartella della stagione) scelto una volta; il browser
+// ricorda quale file e'. La pagina lo legge e lo riscrive solo quando una rosa cambia (OK in "Partita e rosa").
+let ROSE = null, roseH = null, svNote = "";
+const kv = (write, val) => new Promise(res => {
+  try {
+    const o = indexedDB.open("volleycut", 1);
+    o.onupgradeneeded = () => o.result.createObjectStore("kv");
+    o.onsuccess = () => {
+      try { const s = o.result.transaction("kv", write ? "readwrite" : "readonly").objectStore("kv"), q = write ? s.put(val, "roseFile") : s.get("roseFile");
+        q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); } catch (e) { res(null); }
+    };
+    o.onerror = () => res(null);
+  } catch (e) { res(null); }
+});
+const roseIn = p => ({ n: +p.n, cog: p.cognome || "", nome: p.nome || "", sop: p.soprannome || "", r: p.ruolo || "" });
+const roseOut = p => ({ n: p.n, cognome: p.cog || "", nome: p.nome || "", soprannome: p.sop || "", ruolo: p.r || "" });
+const roseSort = list => list.slice().sort((a, b) => a.n - b.n);
+function roseParse(text) { const j = JSON.parse(text); if (!j || !Array.isArray(j.squadre)) throw new Error("manca l'elenco delle squadre"); return j; }
+const NLc = String.fromCharCode(10);
+const roseText = j => ['{', '  "squadre": ['].concat([j.squadre.map(s => ['    {', '      "nome": ' + JSON.stringify(s.nome) + ',', '      "rosa": [',
+  s.rosa.map(p => "        " + JSON.stringify(p)).join("," + NLc), "      ]", "    }"].join(NLc)).join("," + NLc)], ["  ]", "}", ""]).join(NLc);
+const roseInfo = t => { $("lmrinfo").textContent = t; };
+function roseFill() {
+  if (!ROSE) { $("lmteam").innerHTML = '<option value="">(nessun file delle rose)</option>'; return; }
+  const us = $("lmus").value.trim();
+  $("lmteam").innerHTML = '<option value="">&mdash;</option>' + ROSE.squadre.map((s, i) => '<option value="' + i + '"' + (s.nome.trim() === us ? " selected" : "") + ">" + esc(s.nome.trim()) + "</option>").join("");
+  roseInfo("rose da " + (roseH ? roseH.name : "file"));
+}
+async function roseRead(ask) {
+  const h = roseH || await kv(false);
+  if (!h || !h.getFile) return false;
+  roseH = h;
+  try {
+    let p = await h.queryPermission({ mode: "read" });
+    if (p !== "granted" && ask) p = await h.requestPermission({ mode: "read" });
+    if (p !== "granted") { roseInfo("premi File delle rose per leggere " + h.name); return false; }
+    ROSE = roseParse(await (await h.getFile()).text()); roseFill(); return true;
+  } catch (e) { roseInfo("non riesco a leggere " + h.name + ": " + e.message); return false; }
+}
+$("lmrose").onclick = async () => {
+  if (roseH && !ROSE && await roseRead(true)) return;          // file gia' scelto: basta il permesso
+  if (!window.showOpenFilePicker) { $("lmrfile").click(); return; }
+  try {
+    const [h] = await showOpenFilePicker({ types: [{ description: "Rose (JSON)", accept: { "application/json": [".json"] } }] });
+    roseH = h; ROSE = null; await kv(true, h); await roseRead(true);
+  } catch (e) { /* annullato */ }
+};
+$("lmrfile").onchange = async e => {                              // browser senza accesso ai file: solo lettura
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try { ROSE = roseParse(await f.text()); roseH = null; roseFill(); roseInfo("rose da " + f.name + " (questo browser non puo' riscriverlo)"); }
+  catch (err) { alert("Il file delle rose non e' valido: " + err.message); }
+};
+$("lmteam").onchange = () => {
+  const s = ROSE && $("lmteam").value !== "" ? ROSE.squadre[+$("lmteam").value] : null;
+  if (!s) return;
+  $("lmus").value = s.nome.trim(); lmRows(roseSort(s.rosa.map(roseIn)));
+};
+// scrive la rosa nel file solo se e' cambiata (o se la squadra non c'era): si rilegge il file e si cambia solo quella squadra
+async function roseSave(us, roster) {
+  const name = (us || "").trim();
+  if (!name || !ROSE || !roseH || !roseH.createWritable) return "";
+  const rosa = roseSort(roster).map(roseOut), old = ROSE.squadre.find(s => s.nome.trim() === name);
+  if (old && JSON.stringify(roseSort(old.rosa.map(roseIn)).map(roseOut)) === JSON.stringify(rosa)) return "";
+  try {
+    let p = await roseH.queryPermission({ mode: "readwrite" });
+    if (p !== "granted") p = await roseH.requestPermission({ mode: "readwrite" });
+    if (p !== "granted") return roseH.name + " non aggiornato: permesso di scrittura negato.";
+    const cur = roseParse(await (await roseH.getFile()).text()), t = cur.squadre.find(s => s.nome.trim() === name);
+    if (t) t.rosa = rosa; else cur.squadre.push({ nome: name, rosa });
+    const w = await roseH.createWritable(); await w.write(roseText(cur)); await w.close();
+    ROSE = cur;
+    return "Rosa di " + name + " salvata in " + roseH.name + ".";
+  } catch (e) { return "Non riesco a scrivere " + roseH.name + ": " + e.message; }
+}
+roseRead(false);
 let lmFirst = false;
 function openMatchDlg(first) {
   lmFirst = first;
@@ -2937,7 +3017,11 @@ function openMatchDlg(first) {
   lmRows(m.roster && m.roster.length ? m.roster : [{}, {}, {}, {}, {}, {}, {}]);
   $("lmsc").hidden = !scRoster.length;
   $("lmsc").onclick = () => lmRows(scRoster);
+  roseFill();
+  // partita nuova: se la squadra e' nel file delle rose, rosa dal file
+  if (!LIVE && ROSE) { const s = ROSE.squadre.find(x => x.nome.trim() === (m.us || "").trim()); if (s) lmRows(roseSort(s.rosa.map(roseIn))); }
   $("lmdlg").showModal();
+  if (!ROSE) roseRead(false);
 }
 $("lmadd").onclick = () => { const r = lmRead(); r.push({}); lmRows(r); };
 $("lmdvw").onclick = () => $("lmfile").click();
@@ -2960,6 +3044,7 @@ $("lmok").onclick = () => {
     home: document.querySelector('input[name=lmha]:checked').value === "1", us: $("lmus").value.trim(), them: $("lmthem").value.trim(), roster };
   LIVE = Object.assign(LIVE || { v: 1, ev: [] }, m);
   $("lmdlg").close(); liveChanged();
+  roseSave(m.us, roster).then(msg => { if (msg) { svNote = msg; svRender(); if (/^Non|negato/.test(msg)) alert(msg); } });
   if (lmFirst) setSv(true);
 };
 

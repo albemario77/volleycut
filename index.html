@@ -2738,6 +2738,17 @@ function svDigit(d) {
 
 // ---- campo
 const sx = A => A * 7, sy = B => B * 4;
+// disposizione in ricezione, come nelle schermate di Volleyball Scout: per rotazione (zona della palleggiatrice) e
+// zona di rotazione, [profondita' 0 = rete .. 1 = linea di fondo, larghezza 0 = sinistra .. 1 = destra di chi guarda la rete]
+const RECV = {
+  1: { 1: [0.93, 0.92], 2: [0.67, 0.84], 3: [0.17, 0.5], 4: [0.17, 0.16], 5: [0.73, 0.16], 6: [0.73, 0.5] },
+  6: { 1: [0.67, 0.84], 2: [0.17, 0.84], 3: [0.11, 0.5], 4: [0.62, 0.16], 5: [0.79, 0.45], 6: [0.34, 0.56] },
+  5: { 1: [0.67, 0.84], 2: [0.17, 0.84], 3: [0.67, 0.22], 4: [0.11, 0.1], 5: [0.34, 0.16], 6: [0.73, 0.5] },
+  4: { 1: [1.01, 0.95], 2: [0.67, 0.16], 3: [0.34, 0.1], 4: [0.11, 0.05], 5: [0.79, 0.5], 6: [0.73, 0.84] },
+  3: { 1: [0.67, 0.84], 2: [0.22, 0.84], 3: [0.11, 0.61], 4: [0.67, 0.16], 5: [0.73, 0.5], 6: [1.01, 0.67] },
+  2: { 1: [0.76, 0.84], 2: [0.17, 0.84], 3: [0.67, 0.16], 4: [0.22, 0.1], 5: [1.01, 0.33], 6: [0.76, 0.5] },
+};
+const recvAt = (rot, z, left) => { const r = RECV[rot][z], dp = 50 - LV.GEO.end0; return left ? [50 - r[0] * dp, LV.GEO.side0 + r[1] * 75] : [50 + r[0] * dp, LV.GEO.side1 - r[1] * 75]; };
 function svCourt() {
   const g = LV.GEO, left = liveLeft(), st = rallyState();
   const L = (x1, y1, x2, y2, c) => '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" class="' + c + '"/>';
@@ -2758,8 +2769,9 @@ function svCourt() {
   if (C && (C.p0 || C.p1)) s += trk(C.p0, C.pm, C.p1, "");
   if (st && LR.phase === "play") {
     const places = LR.rally.length ? RU.places(LR.rs, "play") : RU.places(st, "start"), srv = serverNo();
+    const recv = !LR.rally.length && !st.serve, rot = RU.rot(st);          // in attesa della battuta avversaria
     for (const [n0, P] of Object.entries(places)) {
-      const n = +n0, c = n === srv ? LV.zoneCenter(1, left, true) : LV.zoneCenter(+P.slice(1), left);
+      const n = +n0, z = +P.slice(1), c = n === srv ? LV.zoneCenter(1, left, true) : recv ? recvAt(rot, z, left) : LV.zoneCenter(z, left);
       const cls = "pl" + (n === st.lib ? " lib" : "") + (n === srv ? " srv" : "") + (C && +C.n === n ? " on" : "");
       s += '<g class="' + cls + '" data-n="' + n + '" transform="translate(' + sx(c[0]) + "," + sy(c[1]) + ')"><circle r="25"/>' +
         '<text y="8" class="pn">' + n + '</text><text y="43" class="ps">' + esc(pname(n)) + '</text><text x="30" y="-16" class="pr">' + RU.role(st, n) + "</text></g>";

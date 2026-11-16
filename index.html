@@ -239,7 +239,8 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
 <dialog id="sdlg">
   <h2>Scout caricato</h2>
   <div id="sbody"></div>
-  <div class="row"><button class="pri" id="sclose">Chiudi</button></div>
+  <div class="row"><button class="pri" id="sclose">Chiudi</button>
+    <button id="sexp" hidden title="Riscrive lo scout in un file .dvw da importare in Volleyball Scout">Esporta .dvw</button></div>
 </dialog>
 <dialog id="zdlg" style="max-width:780px">
   <h2>Zone dove si gioca</h2>
@@ -655,6 +656,16 @@ const ScoutLib = (function () {
     }
     if (!sec["3SCOUT"]) throw new Error("Nel file .dvw non trovo la sezione [3SCOUT].");
     const rows = sec["3SCOUT"].map(l => l.split(";"));
+    // `x` = cio' che serve solo per riscrivere il file (esportazione): sezioni d'intestazione cosi' come sono,
+    // righe d'inizio set, fine set, configurazioni di Volleyball Scout
+    const RAW = ["3DATAVOLLEYSCOUT", "3MATCH", "3TEAMS", "3MORE", "3COMMENTS", "3PLAYERS-H", "3PLAYERS-V", "3ATTACKCOMBINATION", "3SETTERCALL", "3WINNINGSYMBOLS", "3RESERVE", "3VIDEO", "3SET"];
+    const x = { raw: {}, starts: {}, ends: {}, odd: 0 };
+    for (const n of RAW) x.raw[n] = sec[n] || [];
+    // giorno in cui e' stato fatto lo scout (puo' non essere quello della partita): dal primo istante di [3VBSTIMES]
+    const t0 = (sec["3VBSTIMES"] || [""])[0].split(";");
+    if (Number(t0[3]) && secs(t0[1]) !== null) x.t0 = Number(t0[3]) - secs(t0[1]) * 1000;
+    const cfgAt = new Map();                                          // riga di [3SCOUT] -> configurazione (senza l'indice)
+    for (const l of sec["3VBSCONFIGURATIONS"] || []) { const i = l.indexOf(";"); cfgAt.set(Number(l.slice(0, i)), l.slice(i + 1)); }
     const TOUCH = /^([*a])(\d{1,2}|\$\$)([SREABDF])(.*)$/;          // "$$" al posto del numero = giocatore non indicato
     const isTouch = c => TOUCH.test(c);
     const nTouch = pre => rows.filter(f => f[0][0] === pre && isTouch(f[0])).length;
@@ -663,7 +674,7 @@ const ScoutLib = (function () {
     if (nTouch("*") && nTouch("a")) issues.push({ level: "warn", msg: "Il file contiene tocchi di entrambe le squadre: leggo solo quelli " + (mine === "*" ? "dei locali" : "degli ospiti") + "." });
     // tabelle del file: combinazioni d'attacco (codice;zona;lato;tipo;descrizione) e chiamate del palleggiatore (codice;;descrizione)
     const table = (name, at) => { const o = {}; for (const l of sec[name] || []) { const f = l.split(";"); if (f[0]) o[f[0]] = (f[at] || "").trim(); } return o; };
-    const dv = { att: table("3ATTACKCOMBINATION", 4), call: table("3SETTERCALL", 2) };
+    const dv = { att: table("3ATTACKCOMBINATION", 4), call: table("3SETTERCALL", 2), x };
     const side = mine === "*" ? "loc" : "osp";
     const teamRow = ((sec["3TEAMS"] || [])[mine === "*" ? 0 : 1] || "").split(";");
     const team = (side === "loc" ? "Locali: " : "Ospiti: ") + (teamRow[1] || "").trim();
@@ -677,28 +688,38 @@ const ScoutLib = (function () {
     const touchList = [], plist = [];
     const who = pre => (pre === "*" ? "dei locali" : "degli ospiti");
     const odd = [];                                                   // codici che non so leggere: si segnalano, non si perdono in silenzio
-    let set = null, loc = 0, osp = 0, id = 1, gen = [], cur = [], ev = [];   // gen, cur, ev = eventi generici, tocchi ed eventi (cambi, time-out) del punto in corso
-    for (const f of rows) {
-      const c = f[0];
+    let set = null, loc = 0, osp = 0, id = 1, gen = [], cur = [], ev = [], evr = [];   // gen, cur, ev = eventi generici, tocchi ed eventi (cambi, time-out) del punto in corso
+    const keep = (k, o) => { if (cfgAt.has(k)) { o.cfg = cfgAt.get(k); cfgAt.delete(k); } return o; };
+    const luOf = f => f.slice(mine === "*" ? 14 : 20, (mine === "*" ? 14 : 20) + 6).map(v => (v === "" ? null : Number(v)));
+    for (let k = 0; k < rows.length; k++) {
+      const f = rows[k], c = f[0];
       if (!c) continue;
-      if (/^\*\*\d+set/.test(c)) { set = null; continue; }
+      const sm = c.match(/^\*\*(\d+)set/);
+      if (sm) { x.ends[sm[1]] = { tm: f[7], rot: f[rotAt] }; set = null; continue; }
       const pm = c.match(/^([*a])p(\d+):(\d+)/);
       const g = c.match(/^([*a])\$\$&.([#=])/);
       const tm = c.match(TOUCH);
       if (!pm && !g && !tm) {
         let m;
-        if (/^[*a]z\d/.test(c) || />LUp/i.test(c)) continue;                      // rotazione e formazione iniziale: gia' nei campi di ogni riga
+        if (/>LUp/i.test(c)) {                                                    // inizio set: palleggiatore e rotazione
+          const st = x.starts[f[8]] || (x.starts[f[8]] = { tm: f[7], rot: f[rotAt], lu: luOf(f) });
+          if (c[1] === "P") st.p = c; else st.z = keep(k, st).z = c;
+          continue;
+        }
+        if (/^[*a]z\d/.test(c)) continue;                                         // rotazione: gia' nei campi di ogni riga
         if ((m = c.match(/^([*a])T/))) ev.push("time-out " + who(m[1]));
         else if ((m = c.match(/^([*a])c(\d+):(\d+)/))) ev.push("cambio " + who(m[1]) + ": esce #" + Number(m[2]) + ", entra #" + Number(m[3]));
         else if ((m = c.match(/^([*a])P(\d+)/))) ev.push("nuovo palleggiatore " + who(m[1]) + ": #" + Number(m[2]));
         else if (c[0] === ">") ev.push("nota: " + c.replace(/^>+/, ""));
-        else odd.push(c);
+        else { odd.push(c); x.odd++; continue; }
+        evr.push(keep(k, { c, tm: f[7], rot: f[rotAt], lu: luOf(f) }));
         continue;
       }
       if (tm && tm[1] !== mine) continue;
       const s = Number(f[8]);
       if (!s) { issues.push({ level: "err", msg: "Riga senza numero di set (" + c + "): ignorata." }); continue; }
       if (s !== set) { set = s; loc = 0; osp = 0; gen = []; cur = []; }
+      if (cfgAt.has(k) && !tm) { x.odd++; cfgAt.delete(k); }            // configurazione agganciata a una riga che non si riscrive
       const posP = f[rotAt] ? "P" + f[rotAt] : "", lineup = f.slice(luAt, luAt + 6);
       if (pm) {
         const nl = Number(pm[2]), no = Number(pm[3]), w = pm[1] === "*" ? "loc" : "osp";
@@ -708,11 +729,14 @@ const ScoutLib = (function () {
         // giocatore: [squadra, esito], per esempio ["osp", "="] = errore generico degli ospiti
         const lastVote = cur.length ? cur[cur.length - 1].voto : "";
         const q = { set: s, loc, osp, w, gen: lastVote === "++" || lastVote === "=" ? null : gen[0] || null,
-          rot: posP, lu: lineup.some(Boolean) ? lineup.map(x => (x === "" ? null : Number(x))) : null };
+          rot: posP, lu: lineup.some(Boolean) ? lineup.map(x => (x === "" ? null : Number(x))) : null, tm: f[7], gens: gen };
+        // formazione sulla riga del tocco: si tiene solo se diversa da quella del punto (rotazione corretta a mano)
+        for (const t of cur) if (t.lu && q.lu && t.lu.join() === q.lu.join()) delete t.lu;
         if (ev.length) q.ev = ev;
+        if (evr.length) q.evr = evr;
         plist.push(q);
         touchList.push(...cur);
-        loc = nl; osp = no; gen = []; cur = []; ev = [];
+        loc = nl; osp = no; gen = []; cur = []; ev = []; evr = [];
         continue;
       }
       if (g) {
@@ -726,7 +750,10 @@ const ScoutLib = (function () {
       }
       const cod = tm[3] + tm[4], numero = tm[2] === "$$" ? null : Number(tm[2]), z = numero === null ? 0 : lineup.indexOf(String(numero)) + 1;
       const t = { id: id++, tipo: cod[0] === "A" && cod[9] === "T" ? "Pallonetto" : DVW_SKILL[cod[0]], voto: cod[2] === "#" ? "++" : dvSet(cod[2]) ? cod[2] : "",
-        cognome: numero === null ? "" : names[numero] || "", numero, posG: z ? "P" + z : "", posP, set: s, loc, osp, cod };
+        cognome: numero === null ? "" : names[numero] || "", numero, posG: z ? "P" + z : "", posP, set: s, loc, osp, cod, tm: f[7] };
+      if (f[4] || f[5] || f[6]) t.xy = [f[4], f[5], f[6]];               // coordinate della traccia (partenza, muro, arrivo)
+      t.lu = luOf(f);
+      keep(k, t);
       const da = zone(cod[6] || ""), a = zone(cod[7] || "");
       if (da) t.da = da;
       if (a) t.a = a;
@@ -734,6 +761,7 @@ const ScoutLib = (function () {
     }
     if (odd.length) issues.push({ level: "warn", msg: odd.length + " righe con un codice che non so leggere, ignorate: " + [...new Set(odd)].slice(0, 6).join(", ") + (new Set(odd).size > 6 ? "..." : "") + "." });
     if (cur.length) issues.push({ level: "warn", msg: "Gli ultimi " + cur.length + " tocchi del file non hanno un punto assegnato: scout interrotto?" });
+    x.odd += cfgAt.size;
     return { team, touchList, plist, issues, dv };
   }
 
@@ -774,6 +802,114 @@ const ScoutLib = (function () {
   function loadDvw(text) {
     const d = parseDvw(text);
     return fromDvw(d.team, d.touchList, d.plist, d.issues, d.dv);
+  }
+
+  // ---- esportazione in .dvw (formato di Volleyball Scout)
+  // Le righe di [3SCOUT] si ricostruiscono dallo scout: tocchi, eventi generici, punti, rotazioni, cambi, fine set.
+  // Regole ricavate dai sette file della stagione:
+  //   campo 1: sulla riga che chiude il punto e sugli eventi generici "p" se il punto e' nostro, "s" se e' dell'avversario
+  //   campo 2: "p" su ogni nostro attacco
+  //   "*zN" dopo il punto quando la rotazione cambia; "**Nset" con il numero del set successivo
+  // Restituisce il testo; per il file vero serve dvwBytes (Windows-1252).
+  const pad2 = n => String(n).padStart(2, "0");
+  function toDvw(S) {
+    const x = S.dv && S.dv.x;
+    if (!x || !S.plist) throw new Error("Per esportare serve uno scout letto da un file .dvw (se e' stato caricato prima di questa versione, ricaricalo).");
+    const mine = S.side === "loc" ? "*" : "a";
+    const rotAt = mine === "*" ? 9 : 10, luAt = mine === "*" ? 14 : 20;
+    const rows = [], cfgs = [], times = [];
+    const row = (c, o) => {
+      const f = new Array(27).fill("");
+      f[0] = c; f[1] = o.f1 || ""; f[2] = o.f2 || "";
+      if (o.xy) [f[4], f[5], f[6]] = o.xy;
+      f[7] = o.tm || ""; f[8] = String(o.set);
+      if (o.rot) f[rotAt] = String(o.rot).replace(/^P/, "");
+      if (o.lu) o.lu.forEach((n, i) => { f[luAt + i] = n === null || n === undefined ? "" : String(n); });
+      if (o.cfg) cfgs.push(rows.length + ";" + o.cfg);
+      times.push(f[7]);
+      rows.push(f.join(";"));
+    };
+    const byPoint = new Map();
+    for (const p of S.points) byPoint.set(p.i - 1, p.touches.filter(t => t.cod));
+    const sets = [...new Set(S.plist.map(q => q.set))];
+    const setLines = [];
+    sets.forEach((s, si) => {
+      const st = x.starts[s] || {};
+      const idx = S.plist.map((q, i) => i).filter(i => S.plist[i].set === s);
+      const first = S.plist[idx[0]];
+      const rot0 = st.rot || (first.rot || "").replace(/^P/, ""), lu0 = st.lu || first.lu;
+      if (si) row("**" + sets[si - 1] + "set", { tm: (x.ends[sets[si - 1]] || {}).tm, set: s, rot: rot0 });
+      if (st.p) row(st.p, { tm: st.tm, set: s, rot: rot0, lu: lu0 });
+      if (st.z) row(st.z, { tm: st.tm, set: s, rot: rot0, lu: lu0, cfg: st.cfg });
+      const part = [];
+      idx.forEach((i, j) => {
+        const q = S.plist[i], tl = byPoint.get(i) || [];
+        const base = { set: s, rot: q.rot, lu: q.lu };
+        for (const e of q.evr || []) row(e.c, { tm: e.tm, set: s, rot: e.rot, lu: e.lu, cfg: e.cfg });
+        const mark = q.w === S.side ? "p" : "s", gens = q.gens || (q.gen ? [q.gen] : []);
+        // punto chiuso senza eventi generici (free ball "#"): Volleyball Scout non mette il segno di chiusura e scrive
+        // la rotazione prima della riga del punto, che ha gia' la rotazione nuova
+        // rotazione con cui comincia il punto successivo: quella del suo primo tocco (la riga del punto puo' averla gia' cambiata)
+        const ni = idx[j + 1], nt = ni === undefined ? [] : byPoint.get(ni) || [];
+        const nrot = ni === undefined ? null : (nt[0] && nt[0].posP) || S.plist[ni].rot;
+        const bare = !gens.length, turn = nrot && nrot !== q.rot;
+        const zrow = () => row(mine + "z" + nrot.replace(/^P/, ""), { tm: q.tm, set: s, rot: nrot, lu: q.lu ? q.lu.slice(1).concat(q.lu.slice(0, 1)) : null });
+        tl.forEach((t, n) => row(mine + (t.numero === null ? "$$" : pad2(t.numero)) + t.cod, Object.assign({}, base, {
+          rot: t.posP || q.rot, lu: t.lu || q.lu, tm: t.tm, xy: t.xy, cfg: t.cfg, f1: n === tl.length - 1 && gens.length === 1 ? mark : "", f2: t.cod[0] === "A" ? "p" : "" })));
+        for (const g of gens) row((g[0] === "loc" ? "*" : "a") + "$$&H" + g[1], Object.assign({}, base, { tm: q.tm, f1: mark }));
+        const nl = q.loc + (q.w === "loc" ? 1 : 0), no = q.osp + (q.w === "osp" ? 1 : 0);
+        const lt = tl[tl.length - 1], early = bare && lt && lt.posP && q.rot && lt.posP !== q.rot;
+        if (early) row(mine + "z" + q.rot.replace(/^P/, ""), { tm: q.tm, set: s, rot: q.rot, lu: q.lu });
+        row((q.w === "loc" ? "*" : "a") + "p" + pad2(nl) + ":" + pad2(no), Object.assign({}, base, { tm: q.tm }));
+        part.push([nl, no]);
+        if (turn && !early) zrow();                                           // la rotazione sposta tutti di una zona
+      });
+      // parziali quando una squadra arriva a 8, 16, 21 punti, poi il finale; durata in minuti dagli orari
+      const lim = s === 5 ? [5, 10, 12] : [8, 16, 21];                   // nel tie-break i parziali sono a 5, 10, 12
+      const at = n => { const p = part.find(v => Math.max(v[0], v[1]) >= n); return p ? String(p[0]).padStart(2) + "-" + String(p[1]).padStart(2) : ""; };
+      const fin = part[part.length - 1];
+      // durata: quella del file originale se c'e' (Volleyball Scout la calcola a modo suo), altrimenti dagli orari
+      const old = ((x.raw["3SET"] || [])[si] || "").split(";")[5];
+      setLines.push(["True", at(lim[0]), at(lim[1]), at(lim[2]), String(fin[0]).padStart(2) + "-" + String(fin[1]).padStart(2),
+        old || minutes(st.tm, (x.ends[s] || {}).tm || S.plist[idx[idx.length - 1]].tm), ""].join(";"));
+    });
+    const last = sets[sets.length - 1], end = x.ends[last];
+    if (end) row("**" + last + "set", { tm: end.tm, set: last + 1, rot: end.rot });
+    while (setLines.length < 5) setLines.push("True;;;;;0;");
+    const sec = (n, lines) => ["[" + n + "]"].concat(lines);
+    const out = [].concat(
+      sec("3DATAVOLLEYSCOUT", x.raw["3DATAVOLLEYSCOUT"]), sec("3MATCH", x.raw["3MATCH"]), sec("3TEAMS", x.raw["3TEAMS"]),
+      sec("3MORE", x.raw["3MORE"]), sec("3COMMENTS", x.raw["3COMMENTS"]), sec("3SET", setLines),
+      sec("3PLAYERS-H", x.raw["3PLAYERS-H"]), sec("3PLAYERS-V", x.raw["3PLAYERS-V"]), sec("3ATTACKCOMBINATION", x.raw["3ATTACKCOMBINATION"]),
+      sec("3SETTERCALL", x.raw["3SETTERCALL"]), sec("3WINNINGSYMBOLS", x.raw["3WINNINGSYMBOLS"]), sec("3RESERVE", x.raw["3RESERVE"]),
+      sec("3VIDEO", x.raw["3VIDEO"]), sec("3SCOUT", rows), sec("3VBSCONFIGURATIONS", cfgs),
+      sec("3VBSTIMES", ((eps) => rows.map((r, i) => i + ";" + times[i] + ";" + r.split(";")[0] + ";" + eps[i] + ";"))(epochs(x, times))));
+    return out.join("\r\n") + "\r\n";
+  }
+  const secs = tm => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(tm || ""); return m ? +m[1] * 3600 + +m[2] * 60 + +m[3] : null; };
+  function minutes(a, b) {
+    const s = secs(a), e = secs(b);
+    if (s === null || e === null) return "0";
+    return String(Math.ceil(((e - s + 86400) % 86400) / 60));
+  }
+  // istante (millisecondi) di ogni riga per [3VBSTIMES]: data della partita + orario; se l'orario torna indietro
+  // lo scout e' proseguito il giorno dopo
+  function epochs(x, times) {
+    {
+      const d = /^(\d+)\/(\d+)\/(\d+)/.exec((x.raw["3MATCH"] || [""])[0]) || [0, 1, 1, 2000];
+      let day = x.t0 || new Date(+d[3], +d[2] - 1, +d[1]).getTime(), prev = -1;
+      return times.map(t => { const v = secs(t); if (v === null) return day; if (v < prev) day += 86400000; prev = v; return day + v * 1000; });
+    }
+  }
+  // testo -> byte in Windows-1252 (la codifica dei file DataVolley)
+  const CP1252 = "\u20ac\u0081\u201a\u0192\u201e\u2026\u2020\u2021\u02c6\u2030\u0160\u2039\u0152\u008d\u017d\u008f\u0090\u2018\u2019\u201c\u201d\u2022\u2013\u2014\u02dc\u2122\u0161\u203a\u0153\u009d\u017e\u0178";
+  function dvwBytes(text) {
+    const b = new Uint8Array(text.length);
+    for (let i = 0; i < text.length; i++) {
+      const c = text.charCodeAt(i), j = CP1252.indexOf(text[i]);
+      b[i] = j >= 0 ? 0x80 + j : c < 256 ? c : 0x3f;
+    }
+    return b;
   }
 
   // Riconosce il formato dal contenuto: xlsx (archivio zip, inizia con "PK") oppure .dvw (testo, di solito in Windows-1252).
@@ -887,7 +1023,7 @@ const ScoutLib = (function () {
     return { pairs, noPoint, noClip, dup, corr, all, suspects, boundaries, issues, eff: eff.length };
   }
 
-  return { readXlsx, parseScout, buildPoints, fromTouches, loadScout, loadScoutFile, parseDvw, fromDvw, loadDvw, dvDetails, dvEval, dvFilterOptions, dvFixed, dvShown, dvMatch, ended, target,
+  return { readXlsx, parseScout, buildPoints, fromTouches, loadScout, loadScoutFile, parseDvw, fromDvw, loadDvw, toDvw, dvwBytes, dvDetails, dvEval, dvFilterOptions, dvFixed, dvShown, dvMatch, ended, target,
     effectiveClips, autoMatch, analyze, pointLabel };
 })();
 
@@ -1264,6 +1400,7 @@ function showScout() {
     '<table class="stab"><tr><th>Set</th><th>Punti</th><th>Finale</th><th>Vince</th><th title="Rally senza tocchi della nostra squadra: errore generico o punto generico dell\'avversario">Senza righe</th></tr>' + rows + "</table>" +
     (errs.length ? '<p class="bad"><b>Da correggere:</b></p><ul>' + errs.map(i => "<li>" + esc(i.msg) + "</li>").join("") + "</ul>" : '<p class="good">Controlli superati: i set rispettano le regole di fine set.</p>') +
     (warns.length ? "<p><b>Da controllare:</b></p><ul>" + warns.map(i => "<li>" + esc(i.msg) + "</li>").join("") + "</ul>" : "") + matchReport();
+  $("sexp").hidden = !(s.dv && s.dv.x);
   $("sdlg").showModal();
 }
 $("scout").onclick = () => $("sfile").click();
@@ -1280,6 +1417,15 @@ $("sfile").onchange = $("sfiled").onchange = async e => {
   changed(); showScout();
 };
 $("screp").onclick = () => SCOUT && showScout();
+// esportazione .dvw (Windows-1252, come i file di Volleyball Scout)
+$("sexp").onclick = () => {
+  let text;
+  try { text = ScoutLib.toDvw(SCOUT); } catch (err) { alert("Non riesco a esportare: " + err.message); return; }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([ScoutLib.dvwBytes(text)], { type: "application/octet-stream" }));
+  a.download = (SCOUT.file || "scout").replace(/\.(dvw|xlsx)$/i, "") + " (esportato).dvw"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+};
 $("scauto").onclick = () => {
   if (R.some(r => r.spm) && !confirm("Rifare l'abbinamento in ordine cancella le correzioni a mano. Continuare?")) return;
   ScoutLib.autoMatch(R, SCOUT.points, D.min_clip_s || 0.5); changed();

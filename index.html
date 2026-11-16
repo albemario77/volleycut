@@ -88,6 +88,50 @@ body.cine #top,body.cine #list{display:none}
 }
 @media (max-width:900px){#cine{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) 240px}#cpanel{border-left:0;border-top:1px solid var(--line)}}
 kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(--card);font-size:12px}
+/* vista Scout: video a sinistra, campetto e pulsantiera a destra */
+#sv{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 520px;background:var(--bg)}
+#sv[hidden]{display:none}
+body.svon #top,body.svon #list{display:none}
+#svstage{display:flex;flex-direction:column;min-height:0;padding:10px 16px;gap:6px}
+#svid{flex:1;min-height:0;background:#000;border-radius:6px;display:flex;position:relative}
+#svid video{width:100%;height:100%;max-height:none;object-fit:contain;border-radius:6px}
+#svpanel{border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;padding:8px 10px;overflow:auto;gap:2px}
+#svhead .row{margin:2px 0}
+#svcourt{width:100%;height:auto;display:block;user-select:none;touch-action:none;cursor:crosshair;margin:2px 0}
+#svcourt .cbg{fill:var(--bg)}
+#svcourt .cfl{fill:color-mix(in srgb,var(--ok) 9%,var(--card));stroke:var(--fg);stroke-width:2}
+#svcourt .cours{fill:color-mix(in srgb,var(--acc) 12%,transparent)}
+#svcourt .cln{stroke:var(--fg);stroke-width:1.5;opacity:.75;stroke-dasharray:7 6}
+#svcourt .cnet{stroke:var(--fg);stroke-width:5}
+#svcourt .cblk{fill:color-mix(in srgb,var(--dub) 22%,transparent)}
+#svcourt .czn{fill:var(--mut);font-size:24px;opacity:.35;text-anchor:middle;pointer-events:none}
+#svcourt .clab{fill:var(--mut);font-size:17px;pointer-events:none}
+#svcourt .pl{cursor:pointer}
+#svcourt .pl circle{fill:var(--acc);stroke:var(--card);stroke-width:3}
+#svcourt .pl.lib circle{fill:#fff;stroke:#555}
+#svcourt .pl.srv circle{stroke:var(--dub);stroke-width:6}
+#svcourt .pl.on circle{stroke:var(--whi);stroke-width:7}
+#svcourt .pl text{pointer-events:none;text-anchor:middle}
+#svcourt .pl .pn{fill:#fff;font-weight:700;font-size:24px}
+#svcourt .pl.lib .pn{fill:#111}
+#svcourt .pl .ps{fill:var(--fg);font-size:15px}
+#svcourt .pl .pr{fill:var(--mut);font-size:14px;font-weight:600}
+#svcourt .trk{stroke:var(--whi);stroke-width:4;fill:none;pointer-events:none}
+#svcourt .trk.old{stroke:var(--mut);stroke-width:2.5;opacity:.7}
+#svcourt .tpt{fill:var(--whi);pointer-events:none}
+#svcomp{font:15px/1.5 Consolas,monospace;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-height:3.2em}
+#svcomp .h{font:12px/1.4 system-ui,Segoe UI,sans-serif;color:var(--mut)}
+.vg{border-collapse:collapse;margin:2px 0}.vg td,.vg th{padding:2px;border:0;text-align:center;white-space:nowrap}
+.vg th{font-weight:600;color:var(--mut);background:none}.vg button{min-width:46px}
+button.on{outline:2px solid var(--acc)}
+#svbtns button,#svbtns2 button{padding:3px 7px}
+#svlast{border-top:1px solid var(--line);margin-top:4px}
+#svlast .ci{padding:3px 6px;gap:6px}
+#svlast .ci .tg{color:var(--fg)}
+.lsgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 10px;margin:6px 0}
+.lsgrid select{width:100%}
+#lmros input[type=text]{width:9em}#lmros input[type=number]{width:4.2em}
+@media (max-width:900px){#sv{grid-template-columns:1fr;grid-template-rows:minmax(0,40vh) auto}#svpanel{border-left:0;border-top:1px solid var(--line)}}
 </style>
 </head>
 <body>
@@ -125,6 +169,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
         <button id="reset" title="Torna alla proposta automatica">Ripristina originale</button>
         <button id="compact" title="A revisione finita: crea un video con le sole clip tenute (piu' 2 s per lato) e il suo partita.json, per occupare meno spazio">Compatta video&hellip;</button>
         <button id="gocine" title="Video grande con l'elenco delle clip a destra">Vista cinema</button>
+        <button id="gosv" title="Fai lo scout guardando il video: ogni tocco resta legato al suo istante">Scout nella pagina</button>
         <button id="fprev" title="Fotogramma precedente (virgola o Alt+freccia sinistra)">&#9664;|</button>
         <button id="fnext" title="Fotogramma successivo (punto o Alt+freccia destra)">|&#9654;</button>
         <button id="snap" title="Salva come immagine il fotogramma attuale del video (F)">Foto</button>
@@ -220,6 +265,95 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
     <div id="clist"></div>
   </aside>
 </div>
+<div id="sv" hidden>
+  <div id="svstage">
+    <div id="svid"></div>
+    <div class="row">
+      <button id="svplay" class="pri" title="Play/pausa (spazio)">&#9654;</button>
+      <button id="svb1" title="Indietro di 1 s (maiusc+freccia sinistra)">&minus;1 s</button>
+      <button id="svf1" title="Avanti di 1 s (maiusc+freccia destra)">+1 s</button>
+      <button id="svfp" title="Fotogramma precedente (virgola)">&#9664;|</button>
+      <button id="svfn" title="Fotogramma successivo (punto)">|&#9654;</button>
+      <select id="svspeed" title="Velocita'"><option value="0.25">0,25x</option><option value="0.5">0,5x</option><option value="0.75">0,75x</option><option value="1" selected>1x</option><option value="1.5">1,5x</option></select>
+      <span id="svtime" class="mut"></span>
+      <label title="A fine punto il video salta all'inizio della clip successiva con Tieni"><input type="checkbox" id="svjump" checked> a fine punto vai alla clip successiva</label>
+    </div>
+    <div class="row">
+      <button id="svmatch">Partita e rosa&hellip;</button>
+      <button id="svexp" title="Scarica lo scout in un file .dvw da importare in Volleyball Scout">Esporta .dvw</button>
+      <details class="mut"><summary>Tasti</summary>
+        Numero di maglia, poi la lettera: <kbd>B</kbd> battuta <kbd>R</kbd> ricezione <kbd>A</kbd> attacco <kbd>P</kbd> pallonetto <kbd>L</kbd> free ball
+        <kbd>D</kbd> difesa <kbd>E</kbd> alzata <kbd>M</kbd> muro (per chi batte la lettera si puo' saltare). Battuta, attacco, pallonetto, free ball: zona di partenza e
+        di arrivo (1-9), <kbd>M</kbd> tra le due se l'attacco e' murato, <kbd>T</kbd> cambia il tipo di battuta. Voto: <kbd>#</kbd> <kbd>+</kbd> <kbd>!</kbd> <kbd>-</kbd> <kbd>/</kbd> <kbd>=</kbd>
+        oppure <kbd>1</kbd>-<kbd>6</kbd>. Esempio: <kbd>12</kbd> <kbd>A</kbd> <kbd>4</kbd> <kbd>6</kbd> <kbd>#</kbd>.<br>
+        <kbd>Backspace</kbd> annulla (dentro un tocco: l'ultimo tasto) &middot; <kbd>Esc</kbd> abbandona il tocco &middot; <kbd>F1</kbd>/<kbd>F2</kbd> nostro ER/PT &middot;
+        <kbd>F3</kbd>/<kbd>F4</kbd> ER/PT avversario &middot; <kbd>F5</kbd>/<kbd>F6</kbd> time-out nostro/avversario &middot; <kbd>F7</kbd> provvedimento &middot; <kbd>F8</kbd> cambio &middot; <kbd>F9</kbd> nota.<br>
+        Video: <kbd>spazio</kbd> play/pausa &middot; frecce &plusmn;5 s (con <kbd>maiusc</kbd> &plusmn;1 s) &middot; <kbd>,</kbd> <kbd>.</kbd> fotogramma.
+        Nella vista Scout alzata e free ball usano <kbd>E</kbd> e <kbd>L</kbd> perche' <kbd>Z</kbd> e <kbd>F</kbd> sono gia' zoom e foto del video.</details>
+      <span style="flex:1"></span>
+      <button id="svback">Torna alla revisione</button>
+    </div>
+  </div>
+  <aside id="svpanel">
+    <div id="svhead"></div>
+    <svg id="svcourt" viewBox="0 0 700 400"></svg>
+    <div id="svcomp"></div>
+    <div id="svgrid"></div>
+    <div class="row" id="svbtns">
+      <button data-f="1" title="Errore generico nostro">ER noi <kbd>F1</kbd></button>
+      <button data-f="2" title="Punto generico nostro">PT noi <kbd>F2</kbd></button>
+      <button data-f="3" title="Errore generico avversario">ER loro <kbd>F3</kbd></button>
+      <button data-f="4" title="Punto generico avversario (anche: il muro avversario fa punto)">PT loro <kbd>F4</kbd></button>
+    </div>
+    <div class="row" id="svbtns2">
+      <button data-f="5">T.O. noi <kbd>F5</kbd></button>
+      <button data-f="6">T.O. loro <kbd>F6</kbd></button>
+      <button data-f="7">Provvedimento <kbd>F7</kbd></button>
+      <button data-f="8">Cambio <kbd>F8</kbd></button>
+      <button data-f="9">Nota <kbd>F9</kbd></button>
+      <button id="svrotb" title="Rotazione indietro (correzione a mano)">&#8634;</button>
+      <button id="svrotf" title="Rotazione avanti (correzione a mano)">&#8635;</button>
+      <button id="svundo" title="Annulla l'ultimo inserimento">Annulla <kbd>&#9003;</kbd></button>
+    </div>
+    <div id="svlast"></div>
+  </aside>
+</div>
+<dialog id="lmdlg" style="max-width:820px">
+  <h2>Partita e rosa</h2>
+  <div class="row"><label>Data <input type="date" id="lmdate"></label><label>Ora <input type="text" id="lmtime" placeholder="20.30" style="width:5em"></label>
+    <label><input type="radio" name="lmha" value="1"> in casa</label><label><input type="radio" name="lmha" value="0"> in trasferta</label></div>
+  <div class="row"><label>Nostra squadra <input type="text" id="lmus"></label><label>Avversari <input type="text" id="lmthem"></label></div>
+  <div class="row"><b>Rosa</b><button class="sm" id="lmadd">+ giocatrice</button><button class="sm" id="lmdvw">Importa da un .dvw&hellip;</button>
+    <button class="sm" id="lmsc" hidden>Prendi dallo scout caricato</button><input type="file" id="lmfile" accept=".dvw,text/plain,application/octet-stream" hidden>
+    <span class="mut">Il ruolo serve solo a riconoscere il libero e a proporre la palleggiatrice: in campo i ruoli vengono dalla posizione.</span></div>
+  <div style="max-height:46vh;overflow:auto"><table class="stab" id="lmros"><thead><tr><th>N.</th><th>Cognome</th><th>Nome</th><th>Soprannome</th><th>Ruolo</th><th></th></tr></thead><tbody></tbody></table></div>
+  <div class="row"><button class="pri" id="lmok">OK</button><button id="lmno">Annulla</button></div>
+</dialog>
+<dialog id="lsdlg" style="max-width:720px">
+  <h2 id="lstitle">Set</h2>
+  <p class="mut">Formazione di partenza, disegnata come il campo visto da dietro la nostra linea di fondo (zona 1 = chi batte).</p>
+  <div class="lsgrid" id="lszones"></div>
+  <div class="row"><label>Palleggiatrice <select id="lsset"></select></label><label>Libero <select id="lslib"></select></label><label>Secondo libero <select id="lslib2"></select></label></div>
+  <div class="row"><span>Il libero si cambia con</span><select id="lsp1"></select><span>e</span><select id="lsp2"></select><span class="mut" id="lspair"></span></div>
+  <div class="row">Batte per primo: <label><input type="radio" name="lsserve" value="1"> noi</label><label><input type="radio" name="lsserve" value="0"> loro</label></div>
+  <div class="row">Nel video giochiamo: <label><input type="radio" name="lsside" value="L"> a sinistra</label><label><input type="radio" name="lsside" value="R"> a destra</label></div>
+  <p class="bad" id="lserr"></p>
+  <div class="row"><button class="pri" id="lsok">Inizia il set</button><button id="lsno">Annulla</button></div>
+</dialog>
+<dialog id="lsubdlg">
+  <h2>Cambio</h2>
+  <div class="row"><label>Esce <select id="lsubout"></select></label><label>Entra <select id="lsubin"></select></label></div>
+  <p class="mut">Per cambiare il libero scegli il libero che esce e quello che entra. Chi entra prende il posto, il ruolo e la coppia del libero di chi esce.</p>
+  <div class="row"><button class="pri" id="lsubok">Conferma</button><button id="lsubno">Annulla</button></div>
+</dialog>
+<dialog id="lsandlg">
+  <h2>Provvedimento arbitrale</h2>
+  <div class="row">A chi: <label><input type="radio" name="lsanw" value="noi" checked> nostra giocatrice</label><select id="lsann"></select>
+    <label><input type="radio" name="lsanw" value="panchina"> nostra panchina</label><label><input type="radio" name="lsanw" value="loro"> avversari</label></div>
+  <div class="row"><label>Quale <select id="lsank"><option value="avv">avvertimento</option><option value="pen">penalita' (punto e servizio all'altra squadra)</option>
+    <option value="esp">espulsione</option><option value="squ">squalifica</option><option value="rit">ritardo di gioco</option></select></label></div>
+  <div class="row"><button class="pri" id="lsanok">Conferma</button><button id="lsanno">Annulla</button></div>
+</dialog>
 <dialog id="dlg">
   <h2>Minivideo dalla selezione</h2>
   <p id="dsum" class="mut"></p>
@@ -1107,8 +1241,222 @@ const ScoutLib = (function () {
   const Rules = { start: rulesStart, pair: rulesPair, rot: rulesRot, role: rulesRole, libero: rulesLibero, court: rulesCourt,
     point: rulesPoint, sub: rulesSub, places: rulesPlaces };
 
+  // ---- campo: coordinate come in Volleyball Scout. Campo orizzontale disegnato: A lungo il campo (0 = bordo sinistro,
+  // 100 = bordo destro, rete a 50), B in larghezza (0 = bordo alto). Linee ricavate dai sette file: fondo a 7,14 e 92,86,
+  // linee dei 3 m a 35,71 e 64,29, laterali a 12,5 e 87,5. La squadra a sinistra ha la zona 4 in alto.
+  const GEO = { end0: 7.14, end1: 92.86, net: 50, att0: 35.71, att1: 64.29, side0: 12.5, side1: 87.5 };
+  const ZGRID = [[4, 3, 2], [7, 8, 9], [5, 6, 1]];                     // per profondita' (rete -> fondo) e da sinistra a destra di chi guarda la rete
+  function zoneAt(A, B) {
+    const left = A < 50, depth = 50 - GEO.end0;
+    const d = left ? (50 - A) / depth : (A - 50) / depth;
+    const l = left ? (B - GEO.side0) / 75 : (GEO.side1 - B) / 75;
+    const r = d < 1 / 3 ? 0 : d < 2 / 3 ? 1 : 2, c = l < 1 / 3 ? 0 : l < 2 / 3 ? 1 : 2;
+    return ZGRID[r][c];
+  }
+  // centro della zona nella meta' sinistra (left) o destra; `serve` = dietro la linea di fondo (partenza della battuta)
+  function zoneCenter(z, left, serve) {
+    let r = ZGRID.findIndex(x => x.includes(Number(z)));
+    if (r < 0) return null;
+    const c = ZGRID[r].indexOf(Number(z)), depth = 50 - GEO.end0;
+    const d = serve ? 1.08 : (r + 0.5) / 3, l = (c + 0.5) / 3;
+    return [Math.round(left ? 50 - d * depth : 50 + d * depth), Math.round(left ? GEO.side0 + l * 75 : GEO.side1 - l * 75)];
+  }
+  // "AABB" (A fino a 100: allora cinque cifre, come in VS)
+  const xyCode = p => (p ? String(Math.max(0, Math.min(100, Math.round(p[0]))) * 100 + Math.max(0, Math.min(99, Math.round(p[1])))).padStart(4, "0") : "");
+
+  // ---- scout fatto nella pagina: elenco di eventi, ciascuno con l'istante del video `t` (secondi), rigiocato con il
+  // motore delle regole. Il risultato ha la stessa forma di un .dvw letto (touchList, plist, dv.x): filtri, popup,
+  // abbinamento ed esportazione funzionano senza differenze.
+  // doc = { v: 1, date: "2026-11-14", time: "20.30.00", home: true (noi locali), us: "Prima Div.", them: "",
+  //         roster: [{ n, cog, nome, sop, r: "P" | "O" | "B" | "C" | "L" | "" }], ev: [...] }
+  // eventi: {k:"set", t, lu:[zona 1..6], setter, serve (battiamo noi), lib, lib2, pair, left (la nostra meta' e' a sinistra)}
+  //         {k:"t", t, n, s: S R A P F D E B (P = pallonetto), v: # + ! - / =, bt: tipo di battuta H M Q, z0, z1, p0, pm, p1}
+  //         {k:"g", t, who: "noi" | "loro", r: "=" errore | "#" punto}      ER / PT generico
+  //         {k:"sub", t, out, in}  {k:"to", t, who}  {k:"note", t, txt}  {k:"rot", t, d: 1 | -1}  (rotazione corretta a mano)
+  //         {k:"san", t, who: "noi" | "panchina" | "loro", n, kind: "avv" | "pen" | "esp" | "squ" | "rit"}
+  const LIVE_SAN = { avv: "avvertimento", pen: "penalita'", esp: "espulsione", squ: "squalifica", rit: "ritardo di gioco" };
+  const ROLE_NUM = { L: 1, B: 2, O: 3, C: 4, P: 5 };
+  // chiude il punto: "=" su qualsiasi tocco, "#" su battuta, attacco, muro, free ball. L'attacco murato ("/") no: lo
+  // scambio puo' continuare; se il muro fa punto si preme "punto avversario" (vedi il caso in liveReplay)
+  const liveCloses = (s, v) => v === "=" || (v === "#" && "SAPBF".includes(s));
+  const clockOf = (base, t) => {
+    const b = secs(base || "00.00.00") || 0, v = (b + Math.floor(Math.max(0, t || 0))) % 86400;
+    return pad2(Math.floor(v / 3600)) + "." + pad2(Math.floor(v % 3600 / 60)) + "." + pad2(v % 60);
+  };
+  function liveCode(e) {
+    const sk = e.s === "P" ? "A" : e.s, typ = (e.s === "S" || e.s === "R") && e.bt ? e.bt : "H";   // in ricezione: tipo della battuta avversaria
+    let c = sk + typ + e.v;
+    const zz = (e.z0 || "~") + (e.z1 || "~");
+    if (sk === "A") c += "~~~" + zz + "~" + (e.s === "P" ? "T" : "H");
+    else if ("SRF".includes(sk) && (e.z0 || e.z1)) c += "~~~" + zz;
+    return c;
+  }
+  function liveReplay(doc) {
+    const home = doc.home !== false, mine = home ? "*" : "a", side = home ? "loc" : "osp", opp = home ? "osp" : "loc";
+    const ros = new Map((doc.roster || []).map(p => [Number(p.n), p]));
+    const name = n => { const p = ros.get(n); return p ? titleCase(String(p.cog || "").trim()) : ""; };
+    const x = { raw: {}, starts: {}, ends: {}, odd: 0 };
+    const out = { side, team: (home ? "Locali: " : "Ospiti: ") + (doc.us || "").trim(), touchList: [], plist: [], sets: [], issues: [],
+      st: null, rs: null, rally: [], phase: "setup", setsWon: [0, 0], to: { noi: 0, loro: 0 }, bt: {}, played: {}, x, last: null };
+    let st = null, set = 0, rally = [], ev = [], evr = [], cfgNext = null, id = 1, rs = null;
+    const tmOf = t => clockOf(doc.clock || doc.time, t);              // orario delle righe: ora d'inizio + istante del video
+    const score = s => (side === "loc" ? { loc: s.score[0], osp: s.score[1] } : { loc: s.score[1], osp: s.score[0] });
+    const cfgOf = (s, kind) => kind + ";" + mine + ";fiveOne;p" + Rules.rot(s) + ";p" + Rules.rot(s) + ";" + s.lu.join(";") + ";" +
+      (s.lib ?? "") + ";" + (s.lib2 ?? "") + ";" + s.pair.join(",") + ";";
+    // chi ha giocato in ogni set (per la rosa del .dvw): zona di partenza, "*" se entrata dopo o libero
+    const mark = (n, v) => { const p = out.played[set] || (out.played[set] = {}); if (!(n in p)) p[n] = v; };
+    const close = (won, gens, t, i) => {
+      const s0 = rs || st, sc = score(s0), lt = rally[rally.length - 1];
+      const after = Rules.point(st, won);
+      const bare = !gens.length && after.rotated;                     // free ball "#": la riga del punto ha gia' la rotazione nuova
+      const q = { set, loc: sc.loc, osp: sc.osp, w: won ? side : opp, gen: lt && (lt.voto === "++" || lt.voto === "=") ? null : gens[0] || null,
+        rot: "P" + Rules.rot(bare ? after : s0), lu: (bare ? after : s0).lu.slice(), tm: tmOf(t), gens, t, t0: rally.length ? rally[0].t : t, ev: i };
+      if (ev.length) q.ev = ev;
+      if (evr.length) q.evr = evr;
+      out.plist.push(q);
+      out.touchList.push(...rally);
+      st = after; rally = []; ev = []; evr = []; rs = null;
+      if (st.over) {
+        const w = st.score[0] > st.score[1];
+        if (w) out.setsWon[side === "loc" ? 0 : 1]++; else out.setsWon[side === "loc" ? 1 : 0]++;
+        const cur = out.sets[out.sets.length - 1];
+        cur.final = score(st); cur.won = w;
+        x.ends[set] = { tm: tmOf(t), rot: String(Rules.rot(st)) };
+        out.phase = Math.max(...out.setsWon) >= 3 ? "over" : "setup";
+      }
+    };
+    (doc.ev || []).forEach((e, i) => {
+      out.last = e;
+      if (e.k === "set") {
+        if (out.phase === "play") out.issues.push("Set " + set + " non finito: inizia comunque il set " + (set + 1) + ".");
+        set++;
+        try { st = Rules.start({ set, lu: e.lu, setter: e.setter, serve: e.serve, lib: e.lib ?? null, lib2: e.lib2 ?? null, pair: e.pair }); }
+        catch (err) { out.issues.push("Set " + set + ": " + err.message); st = null; out.phase = "setup"; return; }
+        out.sets.push({ set, ev: i, left: e.left !== false, start: st });
+        x.starts[set] = { tm: tmOf(e.t), rot: String(Rules.rot(st)), lu: st.lu.slice(), p: mine + "P" + pad2(st.setter) + ">LUp", z: mine + "z" + Rules.rot(st) + ">LUp", cfg: cfgOf(st, "row") };
+        st.lu.forEach((n, z) => mark(n, String(z + 1)));
+        if (st.lib !== null) mark(st.lib, "*");
+        out.phase = "play"; out.to = { noi: 0, loro: 0 }; rally = []; ev = []; evr = []; rs = null; cfgNext = null;
+        return;
+      }
+      if (!st || out.phase !== "play") { out.issues.push("Evento prima dell'impostazione del set (n. " + (i + 1) + "): ignorato."); return; }
+      const who = w => (w === "noi" ? (side === "loc" ? "dei locali" : "degli ospiti") : side === "loc" ? "degli ospiti" : "dei locali");
+      const code = w => (w === "noi" ? mine : mine === "*" ? "a" : "*");
+      const evRow = (c, extra) => evr.push(Object.assign({ c, tm: tmOf(e.t), rot: String(Rules.rot(st)), lu: st.lu.slice(), t: e.t }, extra || {}));
+      if (e.k === "t") {
+        if (!rally.length) rs = st;
+        const s = e.s, n = Number(e.n), places = Rules.places(rs, s === "S" || s === "R" ? "start" : "play");
+        const cod = liveCode(e);
+        const t = { id: id++, tipo: s === "P" ? "Pallonetto" : DVW_SKILL[s], voto: e.v === "#" ? "++" : e.v, cognome: name(n), numero: n, posG: places[n] || "",
+          posP: "P" + Rules.rot(rs), lu: rs.lu.slice(), set, loc: score(rs).loc, osp: score(rs).osp, cod, tm: tmOf(e.t), t: e.t, ev: i };
+        if (e.p0 || e.p1) t.xy = [xyCode(e.p0), e.pm ? xyCode(e.pm) : "-1-1", xyCode(e.p1)];
+        if (e.z0) t.da = String(e.z0);
+        if (e.z1) t.a = String(e.z1);
+        if (cfgNext) { t.cfg = cfgNext; cfgNext = null; }
+        if (s === "S" && e.bt) out.bt[n] = e.bt;
+        if (!places[n]) out.issues.push("Set " + set + " " + score(rs).loc + "-" + score(rs).osp + ": la #" + n + " tocca la palla ma non e' in campo.");
+        rally.push(t);
+        if (liveCloses(s, e.v)) close(e.v === "#", s === "F" && e.v === "#" ? [] : [[opp, e.v === "#" ? "=" : "#"]], e.t, i);
+        return;
+      }
+      if (e.k === "g") {
+        if (!rally.length) rs = st;
+        const ours = e.who === "noi", won = ours === (e.r === "#");
+        const g1 = [ours ? side : opp, e.r], g2 = [ours ? opp : side, e.r === "#" ? "=" : "#"];
+        const lt = rally[rally.length - 1];
+        // punto avversario subito dopo un nostro attacco murato: in VS e' l'attacco a chiudere (una sola riga generica)
+        if (!ours && e.r === "#" && lt && lt.cod && lt.cod[0] === "A" && lt.voto === "/") { close(false, [[opp, "#"]], e.t, i); return; }
+        if (ours && e.r === "=" && !(lt && (lt.voto === "++" || lt.voto === "=")))   // come nella lettura dei .dvw: una riga "Errore generico"
+          rally.push({ id: id++, tipo: "Errore generico", voto: "", cognome: "", numero: null, posG: "", posP: "P" + Rules.rot(rs), set, loc: score(rs).loc, osp: score(rs).osp, t: e.t, ev: i });
+        close(won, [g1, g2], e.t, i);
+        return;
+      }
+      if (rally.length) out.issues.push("Set " + set + ": evento in mezzo a uno scambio (n. " + (i + 1) + ").");
+      if (e.k === "sub") {
+        const o = Number(e.out), n = Number(e.in), lib = st.lib === o;
+        try { st = Rules.sub(st, o, n); } catch (err) { out.issues.push("Set " + set + ": " + err.message); return; }
+        mark(n, "*");
+        if (lib) { cfgNext = cfgOf(st, "before"); ev.push("cambio del libero: esce #" + o + ", entra #" + n); return; }
+        evRow(mine + "c" + pad2(o) + ":" + pad2(n), { cfg: cfgOf(st, "row") });
+        ev.push("cambio " + who("noi") + ": esce #" + o + ", entra #" + n);
+      } else if (e.k === "to") {
+        out.to[e.who === "noi" ? "noi" : "loro"]++;
+        evRow(code(e.who) + "T"); ev.push("time-out " + who(e.who));
+      } else if (e.k === "note") {
+        const txt = String(e.txt || "").replace(/[;\r\n]+/g, " ").trim();
+        evRow(">" + txt); ev.push("nota: " + txt);
+      } else if (e.k === "rot") {
+        const lu = e.d < 0 ? st.lu.slice(5).concat(st.lu.slice(0, 5)) : st.lu.slice(1).concat(st.lu.slice(0, 1));
+        st = Object.assign({}, st, { lu }); cfgNext = cfgOf(st, "before");
+        ev.push("rotazione corretta a mano: palleggiatrice in P" + Rules.rot(st));
+      } else if (e.k === "san") {
+        const whom = e.who === "loro" ? "squadra avversaria" : e.who === "panchina" ? "nostra panchina" : "#" + e.n;
+        const txt = "provvedimento: " + (LIVE_SAN[e.kind] || e.kind) + " a " + whom;
+        evRow(">" + txt); ev.push(txt);
+        if (e.kind === "pen") {                                              // la penalita' da' punto e servizio all'altra squadra
+          rs = st;
+          const won = e.who === "loro";
+          close(won, [[won ? side : opp, "#"], [won ? opp : side, "="]], e.t, i);
+        }
+      }
+    });
+    out.st = st; out.rs = rs; out.rally = rally; out.pending = { ev, evr, cfgNext };
+    return out;
+  }
+  // intestazione del .dvw (sezioni come nei file di Volleyball Scout) dalla rosa e dai set giocati
+  const HEX = s => Array.from(dvwBytes(String(s || ""))).map(b => b.toString(16).toUpperCase().padStart(2, "0")).join("");
+  const HX = s => "\u000f2" + HEX(s);
+  const hashId = s => { let h = 0x811c9dc5; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).toUpperCase().padStart(8, "0"); };
+  function liveHeader(doc, R) {
+    const home = doc.home !== false, d = /^(\d{4})-(\d{2})-(\d{2})/.exec(doc.date || "") || [0, "2000", "01", "01"];
+    const date = d[3] + "/" + d[2] + "/" + d[1], time = doc.time || "00.00.00";
+    const serial = Math.round((Date.UTC(+d[1], +d[2] - 1, +d[3]) - Date.UTC(1899, 11, 30)) / 86400000);
+    const gen = k => [k + "-DAY: " + date + " " + time, k + "-IDP: DVW", k + "-PRG: Volleyball Scout", k + "-REL:", k + "-VER:", k + "-NAM:"];
+    const us = doc.us || "", won = R.setsWon[R.side === "loc" ? 0 : 1];
+    const ours = (home ? "1" : "2") + ";" + us + ";" + won + ";;;" + parseInt(hashId(us).slice(0, 6), 16) + ";" + HX(us) + ";\u000f2;\u000f2;";
+    const players = (doc.roster || []).map((p, i) => {
+      const cols = [1, 2, 3, 4, 5].map(s => ((R.played[s] || {})[p.n] || ""));
+      const idp = hashId((p.cog || "") + "|" + (p.nome || "") + "|" + p.n), cog = String(p.cog || "").toUpperCase();
+      return [home ? "0" : "1", p.n, i + 1].concat(cols, [idp, cog, p.nome || "", p.sop || "", p.r === "L" ? "L" : "", ROLE_NUM[p.r] || "", "", idp, "",
+        HX(cog), HX(p.nome || ""), HX(p.sop || ""), "", "", ""]).join(";");
+    });
+    return {
+      "3DATAVOLLEYSCOUT": ["FILEFORMAT: 2.0"].concat(gen("GENERATOR"), gen("LASTCHANGE")),
+      "3MATCH": [date + ";" + time + ";;;;;1;;1252;1;Z;0;\u000f2;\u000f2;;", ";;" + serial + ";;;;;;;;;;"],
+      "3TEAMS": home ? [ours, ";;;;;;;;;"] : [";;;;;;;;;", ours],
+      "3MORE": [";;;;;;\u000f2;\u000f2;\u000f2;\u000f2;", ";0;0;"], "3COMMENTS": [], "3SET": [],
+      "3PLAYERS-H": home ? players : [], "3PLAYERS-V": home ? [] : players,
+      "3ATTACKCOMBINATION": [], "3SETTERCALL": [], "3WINNINGSYMBOLS": ["=~~~#~~~=~~~~~~~=/~~#~~~=/~~#~~~=~~~~~~~=~~~~~~~=~~~~~~~"],
+      "3RESERVE": [], "3VIDEO": [],
+    };
+  }
+  // scout della pagina -> dati come da un .dvw letto (per fromDvw e toDvw)
+  function liveScout(doc) {
+    const R = liveReplay(doc);
+    const d = /^(\d{4})-(\d{2})-(\d{2})/.exec(doc.date || "");
+    R.x.raw = liveHeader(doc, R);
+    if (d) R.x.t0 = new Date(+d[1], +d[2] - 1, +d[3]).getTime();
+    return { team: R.team, touchList: R.touchList, plist: R.plist, dv: { att: {}, call: {}, x: R.x }, replay: R };
+  }
+  // rosa dal .dvw (per non riscriverla a mano): la squadra con i tocchi
+  function dvwRoster(text) {
+    const d = parseDvw(text), home = /^Locali/.test(d.team);
+    const sec = []; let cur = null;
+    for (const line of text.split(/\r?\n/)) {
+      const h = line.match(/^\[(3[A-Z\-]+)\]\s*$/);
+      if (h) { cur = h[1] === (home ? "3PLAYERS-H" : "3PLAYERS-V") ? sec : null; continue; }
+      if (cur && line.trim()) cur.push(line.split(";"));
+    }
+    const RN = { 1: "L", 2: "B", 3: "O", 4: "C", 5: "P" };
+    const tl = (text.split(/\r?\n/).find((l, i, a) => a[i - (home ? 1 : 2)] === "[3TEAMS]") || "").split(";");
+    return { us: tl[1] !== undefined ? tl[1] : d.team.replace(/^(Locali|Ospiti):\s*/, ""), home,
+      roster: sec.filter(f => f[1] !== "").map(f => ({ n: Number(f[1]), cog: (f[9] || "").trim(), nome: (f[10] || "").trim(), sop: (f[11] || "").trim(), r: f[12] === "L" ? "L" : RN[f[13]] || "" })) };
+  }
+  const Live = { replay: liveReplay, scout: liveScout, header: liveHeader, code: liveCode, closes: liveCloses, roster: dvwRoster, clock: clockOf,
+    zoneAt, zoneCenter, GEO, SAN: LIVE_SAN };
+
   return { readXlsx, parseScout, buildPoints, fromTouches, loadScout, loadScoutFile, parseDvw, fromDvw, loadDvw, toDvw, dvwBytes, dvDetails, dvEval, dvFilterOptions, dvFixed, dvShown, dvMatch, ended, target,
-    effectiveClips, autoMatch, analyze, pointLabel, Rules };
+    effectiveClips, autoMatch, analyze, pointLabel, Rules, Live };
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = ScoutLib;
@@ -1316,7 +1664,8 @@ const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const sorted = () => R.sort((a, b) => a.start - b.start || a.end - b.end);
 const kept = () => sorted().filter(r => r.keep);
 const store = {
-  save() { try { localStorage.setItem(KEY, JSON.stringify(R)); localStorage.setItem(KEY + ":scout", SCOUT ? JSON.stringify(scoutMeta()) : ""); localStorage.setItem(KEY + ":del", JSON.stringify(D.deleted || [])); } catch (e) {} },
+  save() { try { localStorage.setItem(KEY, JSON.stringify(R)); localStorage.setItem(KEY + ":scout", SCOUT ? JSON.stringify(scoutMeta()) : ""); localStorage.setItem(KEY + ":del", JSON.stringify(D.deleted || [])); localStorage.setItem(KEY + ":live", LIVE ? JSON.stringify(LIVE) : ""); } catch (e) {} },
+  loadLive() { try { const s = localStorage.getItem(KEY + ":live"); return s ? JSON.parse(s) : null; } catch (e) { return null; } },
   loadScout() { try { const s = localStorage.getItem(KEY + ":scout"); return s ? JSON.parse(s) : null; } catch (e) { return null; } },
   loadDeleted() { try { return JSON.parse(localStorage.getItem(KEY + ":del") || "[]"); } catch (e) { return []; } },
   load() { try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } },
@@ -1328,7 +1677,7 @@ const normEdited = list => { list.forEach(r => { if (!("edited" in r)) r.edited 
 const saved = D.empty ? null : store.load();
 if (saved && saved.length) { R = saved; D.deleted = store.loadDeleted(); }
 normEdited(R);
-const scoutMeta = () => (SCOUT ? Object.assign({ file: SCOUT.file, team: SCOUT.team, touchList: SCOUT.touchList }, SCOUT.plist ? { plist: SCOUT.plist, dv: SCOUT.dv } : {}) : null);
+const scoutMeta = () => (SCOUT && !SCOUT.live ? Object.assign({ file: SCOUT.file, team: SCOUT.team, touchList: SCOUT.touchList }, SCOUT.plist ? { plist: SCOUT.plist, dv: SCOUT.dv } : {}) : null);
 function restoreScout(m) {
   SCOUT = null;
   if (m && m.touchList && m.touchList.length) {        // con `plist` lo scout viene da un .dvw: i punti sono gia' espliciti
@@ -1815,7 +2164,7 @@ const projectData = () => ({ video_name: D.video_name, duration: D.duration, thr
   cells: D.cells, zones: D.zones, deleted: D.deleted || [], compact: D.compact || null });
 let loadedRev = +(D.meta && D.meta.revision || 0);          // revisione del file aperto: serve a non sovrascrivere un salvataggio fatto altrove
 const toJSON = rev => JSON.stringify({ meta: Object.assign({}, D.meta, { reviewed: true, revision: rev, saved_at: new Date().toISOString() },
-  SCOUT ? { scout: scoutMeta() } : {}, { project: projectData() }),
+  SCOUT && !SCOUT.live ? { scout: scoutMeta() } : {}, LIVE ? { live: LIVE } : {}, { project: projectData() }),
   rallies: sorted().map((r, i) => Object.assign({}, r, { n: i + 1, duration: r.end - r.start })) }, null, 2);
 function setProject(pj, rallies) {
   D = Object.assign({}, EMPTY, pj, { empty: false, video_src: "", rallies: rallies.map(r => Object.assign({}, r)),
@@ -1865,6 +2214,7 @@ function loadText(text, name) {
     r, { start: +r.start, end: +r.end, reasons: r.reasons || [] }));
   normEdited(R);
   restoreScout(d.meta && d.meta.scout);
+  LIVE = (d.meta && d.meta.live) || null; liveRefresh(); C = null;
   sel = null; lastSave = name ? hhmm() : lastSave;
   if (sorted().length) { const w = v1 - v0; v0 = clamp(R[0].start - 30, 0, Math.max(0, DUR - w)); v1 = v0 + w; seek(R[0].start); }
   changed(); markDirty(false); return true;
@@ -2013,6 +2363,7 @@ v.addEventListener("play", () => {
 });
 function tick() {
   if (cine) { cineTick(); zoomDraw(); requestAnimationFrame(tick); return; }
+  if (svOn) { svTick(); zoomDraw(); requestAnimationFrame(tick); return; }
   if (!v.paused && seqOn()) {
     const t = v.currentTime, k = seqClips();
     if (!k.some(r => t >= r.start - 0.05 && t < r.end)) {
@@ -2211,10 +2562,479 @@ function stepFrame(n) {
 $("fprev").onclick = $("cfprev").onclick = () => stepFrame(-1);
 $("fnext").onclick = $("cfnext").onclick = () => stepFrame(1);
 
+// ---- vista Scout: lo scout si fa nella pagina guardando il video, e ogni evento prende l'istante del video.
+// Il documento (LIVE) e' l'elenco degli eventi; punteggio, rotazione, libero e posizioni vengono dal suo rigioco (LR),
+// con le regole di ScoutLib.Live e ScoutLib.Rules. Si salva nel json della partita (meta.live), separato dallo
+// scout importato: se non c'e' uno scout importato, filtri e abbinamento usano questo.
+const LV = ScoutLib.Live, RU = ScoutLib.Rules;
+let LIVE = null, LR = null, svOn = false, C = null;      // C = tocco in composizione
+const VOTES = ["#", "+", "!", "-", "/", "="], VL = x => (x === "#" ? "++" : x);
+const SKN = { S: "Battuta", R: "Ricezione", A: "Attacco", P: "Pallonetto", F: "Free ball", D: "Difesa", E: "Alzata", B: "Muro" };
+const SKK = { S: "B", R: "R", A: "A", P: "P", F: "L", D: "D", E: "E", B: "M" };          // lettera da tastiera
+const KEYSK = {}; Object.keys(SKK).forEach(s => { KEYSK[SKK[s].toLowerCase()] = s; });
+const BTN = { H: "float piedi a terra", M: "float in salto", Q: "jump spin" }, BTO = ["H", "M", "Q"];
+const TRACK = s => "SAPF".includes(s);
+const pname = n => { const p = LIVE && LIVE.roster.find(x => x.n === n), c = p ? String(p.cog || "") : ""; return p ? p.sop || c.charAt(0) + c.slice(1).toLowerCase() : ""; };
+function liveLeft() {                                     // la nostra meta' nel video: a sinistra?
+  let left = true;
+  for (const e of LIVE ? LIVE.ev : []) { if (e.k === "set") left = e.left !== false; else if (e.k === "side") left = !left; }
+  return left;
+}
+const playing = () => !!(LR && LR.phase === "play" && LR.st);
+const rallyState = () => (LR && LR.st ? LR.rs || LR.st : null);
+const serverNo = () => (playing() && !LR.rally.length && LR.st.serve ? LR.st.lu[0] : null);
+function liveRefresh() {                                  // rigioco e, se serve, scout per filtri e abbinamento
+  LR = LIVE ? LV.replay(LIVE) : null;
+  if (!SCOUT || SCOUT.live) liveToScout();
+}
+function liveChanged() { liveRefresh(); store.save(); markDirty(true); svRender(); }
+function liveToScout() {
+  if (!LIVE || !LR || !LR.plist.length) { if (SCOUT && SCOUT.live) { SCOUT = null; refreshMatch(); } return; }
+  const d = LV.scout(LIVE);
+  SCOUT = ScoutLib.fromDvw(d.team, d.touchList, d.plist, [], d.dv); SCOUT.live = true; SCOUT.file = "scout fatto nella pagina";
+  // abbinamento clip <-> punti dall'istante: la clip con Tieni che contiene il primo tocco (o l'ER/PT) del punto
+  const k = kept();
+  R.forEach(r => { delete r.sp; delete r.spm; });
+  d.plist.forEach((q, i) => { const r = k.find(c => q.t0 >= c.start - 1 && q.t0 <= c.end + 1); if (r && !r.sp) r.sp = i + 1; });
+  refreshMatch();
+}
+function evText(e) {
+  if (e.k === "t") return "#" + e.n + " " + SKN[e.s] + (e.s === "S" && e.bt ? " (" + BTN[e.bt] + ")" : "") + " " + VL(e.v) +
+    (e.z0 || e.z1 ? " " + (e.z0 || "?") + (e.pm ? " muro " : "→") + (e.z1 || "?") : "");
+  if (e.k === "g") return (e.r === "=" ? "errore generico " : "punto generico ") + (e.who === "noi" ? "nostro" : "avversario");
+  if (e.k === "set") return "inizio set";
+  if (e.k === "sub") return "cambio: esce #" + e.out + ", entra #" + e.in;
+  if (e.k === "to") return "time-out " + (e.who === "noi" ? "nostro" : "avversario");
+  if (e.k === "san") return "provvedimento: " + LV.SAN[e.kind] + " (" + (e.who === "noi" ? "#" + e.n : e.who === "panchina" ? "panchina" : "avversari") + ")";
+  if (e.k === "note") return "nota: " + e.txt;
+  if (e.k === "rot") return "rotazione corretta a mano";
+  if (e.k === "side") return "cambio di campo";
+  return e.k;
+}
+
+// ---- inserimento
+function addEv(e) {
+  if (!LIVE) return;
+  const before = LR ? LR.plist.length : 0;
+  LIVE.ev.push(e); C = null; liveChanged();
+  if (LR.plist.length > before) afterPoint(e);
+}
+function afterPoint(e) {
+  if (LR.phase === "setup") { v.pause(); setTimeout(openSetDlg, 50); return; }
+  if (LR.phase === "over") { v.pause(); svRender(); return; }
+  const s = LR.sets[LR.sets.length - 1], sc = LR.st.score;
+  // quinto set: a 8 punti si cambia campo (si puo' rifiutare)
+  if (s.set === 5 && Math.max(sc[0], sc[1]) === 8 && Math.min(sc[0], sc[1]) < 8 && !LIVE.ev.slice(s.ev).some(x => x.k === "side")) {
+    const p = LR.plist[LR.plist.length - 1];
+    if (Math.max(p.loc, p.osp) === 7 && confirm("Quinto set, 8 punti: cambio di campo? (OK = la nostra meta' passa dall'altra parte del video)")) { LIVE.ev.push({ k: "side", t: e.t }); liveChanged(); }
+  }
+  if ($("svjump").checked) { const nx = kept().find(r => r.start > e.t + 0.5); if (nx) seek(nx.start); }
+}
+function startTouch(n) {
+  if (!playing()) { if (LR && LR.phase === "setup") openSetDlg(); return; }
+  C = { t: v.currentTime, n: String(n), step: "skill" };
+  if (n === serverNo()) { C.s = "S"; C.step = "track"; C.bt = LR.bt[n] || "H"; }
+  svRender();
+}
+function setSkill(s) {
+  if (!C || !C.n) return;
+  C.s = s; C.step = TRACK(s) ? "track" : "vote";
+  if (s === "S") C.bt = C.bt || LR.bt[+C.n] || "H";
+  if (!TRACK(s)) { delete C.z0; delete C.z1; delete C.p0; delete C.p1; delete C.pm; }
+  svRender();
+}
+function commitVote(val) {
+  if (!C || !C.n) return;
+  if (!C.s) { if (+C.n === serverNo()) C.s = "S"; else return; }
+  const n = +C.n, st = rallyState();
+  if (st && !RU.court(st).includes(n) && !confirm("La #" + n + " non risulta in campo. Inserire comunque il tocco?")) return;
+  const e = { k: "t", t: Math.round(C.t * 100) / 100, n, s: C.s, v: val };
+  if (C.s === "S") e.bt = C.bt || "H";
+  if (TRACK(C.s) && (C.z0 || C.p0)) {
+    const left = liveLeft();
+    e.p0 = C.p0 || LV.zoneCenter(C.z0, left, C.s === "S");                // da tastiera: centro della zona
+    if (C.z1 || C.p1) e.p1 = C.p1 || LV.zoneCenter(C.z1, !left);
+    if (C.pm) e.pm = C.pm;
+    else if (C.blk && e.p1) e.pm = [left ? 51 : 49, Math.round((e.p0[1] + e.p1[1]) / 2)];
+    e.p0 = e.p0.map(Math.round); if (e.p1) e.p1 = e.p1.map(Math.round); if (e.pm) e.pm = e.pm.map(Math.round);
+    e.z0 = String(C.z0 || LV.zoneAt(...e.p0));
+    if (e.p1) e.z1 = String(C.z1 || LV.zoneAt(...e.p1));
+  }
+  addEv(e);
+}
+function stepBack() {
+  if (!C) return;
+  if (C.p1 || C.z1) { delete C.p1; delete C.z1; C.step = "track"; }
+  else if (C.pm || C.blk) { delete C.pm; delete C.blk; }
+  else if (C.p0 || C.z0) { delete C.p0; delete C.z0; }
+  else if (C.s) { delete C.s; C.step = "skill"; }
+  else if (C.n && C.n.length > 1) C.n = C.n.slice(0, -1);
+  else C = null;
+  svRender();
+}
+function undo() {
+  if (C) { C = null; svRender(); return; }
+  if (!LIVE || !LIVE.ev.length) return;
+  const e = LIVE.ev[LIVE.ev.length - 1];
+  if (e.k === "set" && !confirm("Annullare l'inizio del set " + (LR.sets.length) + "?")) return;
+  LIVE.ev.pop(); liveChanged();
+}
+function fkey(n) {
+  if (!LIVE) return;
+  if (n === 7) { openSanDlg(); return; }
+  if (n === 8) { openSubDlg(); return; }
+  if (!playing()) { if (LR && LR.phase === "setup") openSetDlg(); return; }
+  const t = Math.round(v.currentTime * 100) / 100;
+  C = null;
+  if (n <= 4) { addEv({ k: "g", t, who: n <= 2 ? "noi" : "loro", r: n % 2 ? "=" : "#" }); return; }
+  if (n === 5 || n === 6) {
+    const who = n === 5 ? "noi" : "loro";
+    if (LR.to[who] >= 2 && !confirm("Time-out " + (who === "noi" ? "nostri" : "avversari") + " gia' due in questo set. Inserire comunque?")) return;
+    addEv({ k: "to", t, who }); return;
+  }
+  if (n === 9) { const txt = prompt("Nota (legata all'istante " + fmt(t) + "):"); if (txt && txt.trim()) addEv({ k: "note", t, txt: txt.trim() }); }
+}
+// tastiera: true se il tasto e' dello scout
+function svKey(e) {
+  if (!svOn) return false;
+  // si sta scrivendo in un campo visibile (un campo di una finestra chiusa puo' restare attivo: non conta)
+  const ae = document.activeElement, typing = ae && /INPUT|TEXTAREA|SELECT/.test(ae.tagName) && ae.type !== "checkbox" && ae.offsetParent !== null;
+  if (document.querySelector("dialog[open]") || typing) {
+    if (/^F\d$/.test(e.key)) e.preventDefault();            // F5 non deve ricaricare la pagina
+    return false;
+  }
+  const k = e.key, kl = k.toLowerCase();
+  if (/^F[1-9]$/.test(k)) { e.preventDefault(); fkey(+k.slice(1)); return true; }
+  if (/^F\d+$/.test(k)) { e.preventDefault(); return true; }
+  if (k === "Escape") { if (C) { C = null; svRender(); } return true; }
+  if (k === "Backspace") { e.preventDefault(); if (C) stepBack(); else undo(); return true; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  if (/^[0-9]$/.test(k)) { svDigit(+k); return true; }
+  if (C && C.n) {
+    if (kl === "t" && C.s === "S") { C.bt = BTO[(BTO.indexOf(C.bt || "H") + 1) % 3]; svRender(); return true; }
+    if (kl === "m" && C.step === "track" && (C.s === "A" || C.s === "P") && (C.z0 || C.p0) && !(C.z1 || C.p1)) { C.blk = true; svRender(); return true; }
+    if (KEYSK[kl] && (C.step === "num" || C.step === "skill" || C.step === "track" && !C.z0 && !C.p0)) { setSkill(KEYSK[kl]); return true; }
+    if (VOTES.includes(k)) { commitVote(k); return true; }
+  }
+  return false;
+}
+function svDigit(d) {
+  if (!LIVE) return;
+  if (!C) { if (!playing()) { if (LR && LR.phase === "setup") openSetDlg(); return; } C = { t: v.currentTime, n: String(d), step: "num" }; svRender(); return; }
+  if (C.step === "num" || (C.step === "skill" && !C.s)) {
+    const cand = C.n + d, on = RU.court(rallyState()), srv = serverNo();
+    // per chi batte la lettera si puo' saltare: dopo il suo numero una cifra che non forma un numero in campo e' la zona
+    if (srv !== null && +C.n === srv && C.n.length <= 2 && !on.includes(+cand) && d >= 1) { setSkill("S"); C.z0 = String(d); svRender(); return; }
+    if (C.n.length < 2 && C.step === "num") { C.n = cand; svRender(); }
+    return;
+  }
+  if (C.step === "track" && d >= 1) {
+    if (!C.z0 && !C.p0) C.z0 = String(d);
+    else if (!C.z1 && !C.p1) { C.z1 = String(d); C.step = "vote"; }
+    svRender(); return;
+  }
+  if (C.step === "vote" && d >= 1 && d <= 6) commitVote(VOTES[d - 1]);
+}
+
+// ---- campo
+const sx = A => A * 7, sy = B => B * 4;
+function svCourt() {
+  const g = LV.GEO, left = liveLeft(), st = rallyState();
+  const L = (x1, y1, x2, y2, c) => '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" class="' + c + '"/>';
+  let s = '<rect x="0" y="0" width="700" height="400" class="cbg"/>' +
+    '<rect x="' + sx(g.end0) + '" y="' + sy(g.side0) + '" width="' + (sx(g.end1) - sx(g.end0)) + '" height="' + (sy(g.side1) - sy(g.side0)) + '" class="cfl"/>' +
+    '<rect x="' + (left ? sx(g.end0) : 350) + '" y="' + sy(g.side0) + '" width="' + (350 - sx(g.end0)) + '" height="' + (sy(g.side1) - sy(g.side0)) + '" class="cours"/>' +
+    '<rect x="' + sx(47) + '" y="' + sy(g.side0) + '" width="' + (sx(53) - sx(47)) + '" height="' + (sy(g.side1) - sy(g.side0)) + '" class="cblk"/>' +
+    L(sx(g.att0), sy(g.side0), sx(g.att0), sy(g.side1), "cln") + L(sx(g.att1), sy(g.side0), sx(g.att1), sy(g.side1), "cln") +
+    L(350, sy(g.side0) - 14, 350, sy(g.side1) + 14, "cnet");
+  for (const half of [true, false]) for (let z = 1; z <= 9; z++) { const c = LV.zoneCenter(z, half); s += '<text x="' + sx(c[0]) + '" y="' + (sy(c[1]) + 8) + '" class="czn">' + z + "</text>"; }
+  s += '<text x="' + (left ? 14 : 610) + '" y="26" class="clab">noi</text><text x="' + (left ? 610 : 14) + '" y="26" class="clab">' + esc((LIVE && LIVE.them) || "loro") + "</text>";
+  // traccia dell'ultimo tocco e di quello in composizione
+  const trk = (p0, pm, p1, cls) => { const pts = [p0, pm, p1].filter(Boolean); if (!pts.length) return "";
+    return (pts.length > 1 ? '<polyline points="' + pts.map(p => sx(p[0]) + "," + sy(p[1])).join(" ") + '" class="trk ' + cls + '"/>' : "") +
+      pts.map(p => '<circle cx="' + sx(p[0]) + '" cy="' + sy(p[1]) + '" r="' + (cls ? 3 : 5) + '" class="tpt"/>').join(""); };
+  const last = LIVE && [...LIVE.ev].reverse().find(e => e.k === "t" || e.k === "set");
+  if (last && last.k === "t" && last.p0 && !C) s += trk(last.p0, last.pm, last.p1, "old");
+  if (C && (C.p0 || C.p1)) s += trk(C.p0, C.pm, C.p1, "");
+  if (st && LR.phase === "play") {
+    const places = LR.rally.length ? RU.places(LR.rs, "play") : RU.places(st, "start"), srv = serverNo();
+    for (const [n0, P] of Object.entries(places)) {
+      const n = +n0, c = n === srv ? LV.zoneCenter(1, left, true) : LV.zoneCenter(+P.slice(1), left);
+      const cls = "pl" + (n === st.lib ? " lib" : "") + (n === srv ? " srv" : "") + (C && +C.n === n ? " on" : "");
+      s += '<g class="' + cls + '" data-n="' + n + '" transform="translate(' + sx(c[0]) + "," + sy(c[1]) + ')"><circle r="25"/>' +
+        '<text y="8" class="pn">' + n + '</text><text y="43" class="ps">' + esc(pname(n)) + '</text><text x="30" y="-16" class="pr">' + RU.role(st, n) + "</text></g>";
+    }
+  }
+  $("svcourt").innerHTML = s;
+}
+const svPt = ev => { const r = $("svcourt").getBoundingClientRect(); return [clamp((ev.clientX - r.left) / r.width * 100, 0, 100), clamp((ev.clientY - r.top) / r.height * 100, 0, 100)]; };
+let svDown = null;
+function trackPoint(p) {
+  if (!C || !C.n) return;
+  if (!C.s || !TRACK(C.s)) setSkill(C.att || "A");
+  C.step = "track";
+  if (!C.p0) { C.p0 = p; delete C.z0; }
+  else if (!C.p1) {
+    if ((C.s === "A" || C.s === "P") && !C.pm && Math.abs(p[0] - 50) < 3) C.pm = p;          // fascia del muro: serve l'arrivo vero
+    else { C.p1 = p; delete C.z1; C.step = "vote"; }
+  }
+  svRender();
+}
+$("svcourt").onpointerdown = ev => {
+  const pl = ev.target.closest && ev.target.closest(".pl");
+  if (pl) { ev.preventDefault(); startTouch(+pl.dataset.n); return; }
+  if (C && C.n && C.step !== "vote") svDown = svPt(ev);
+};
+$("svcourt").onpointerup = ev => {
+  if (!svDown) return;
+  const p = svPt(ev), d = svDown; svDown = null;
+  if (!C.p0 && Math.hypot(p[0] - d[0], (p[1] - d[1]) * 4 / 7) > 4) { trackPoint(d); trackPoint(p); } else trackPoint(p);   // trascinamento = partenza e arrivo
+};
+
+// ---- pannello
+function svHead() {
+  const h = $("svhead");
+  if (!LIVE || !LR) { h.innerHTML = '<p class="mut">Nessuno scout: imposta prima partita e rosa.</p>'; return; }
+  const s = LR.sets[LR.sets.length - 1], st = LR.st;
+  const won = LR.side === "loc" ? LR.setsWon : [LR.setsWon[1], LR.setsWon[0]];
+  let x = '<div class="row"><b style="font-size:18px">' + (s ? "Set " + s.set + " &middot; " + st.score[0] + " &ndash; " + st.score[1] : "Partita") + "</b>" +
+    '<span class="mut">' + esc((LIVE.us || "noi").trim()) + " &ndash; " + esc(LIVE.them || "avversari") + " &middot; set " + won[0] + "-" + won[1] + "</span>";
+  if (playing()) x += '<span class="pill">' + (st.serve ? "battiamo noi" : "battono loro") + '</span><span class="mut">rotazione P' + RU.rot(st) +
+    " &middot; time-out " + LR.to.noi + " &ndash; " + LR.to.loro + "</span>";
+  x += "</div>";
+  if (LR.phase === "setup") x += '<div class="row"><button class="pri" id="svsetb">Imposta il set ' + (LR.sets.length + 1) + "&hellip;</button></div>";
+  if (LR.phase === "over") x += '<p class="good">Partita finita (set ' + won[0] + "-" + won[1] + ").</p>";
+  if (LR.issues.length) x += '<p class="bad">' + esc(LR.issues[LR.issues.length - 1]) + "</p>";
+  const lt = LR.rally[LR.rally.length - 1];
+  if (lt && lt.cod && lt.cod[0] === "A" && lt.voto === "/") x += '<p class="sus">Attacco murato: se il muro avversario ha fatto punto premi PT loro (F4).</p>';
+  h.innerHTML = x;
+  if ($("svsetb")) $("svsetb").onclick = openSetDlg;
+}
+function svComp() {
+  const el = $("svcomp");
+  if (!C) { el.innerHTML = '<span class="h">' + (playing() ? "Clic su una giocatrice o numero di maglia; ER/PT e gli altri eventi con i pulsanti o F1-F9." : "") + "</span>"; return; }
+  const zz = (C.z0 || (C.p0 && LV.zoneAt(...C.p0)) || "") + (C.blk || C.pm ? " M " : C.z0 || C.p0 ? "→" : "") + (C.z1 || (C.p1 && LV.zoneAt(...C.p1)) || "");
+  const txt = [fmt(C.t), C.n ? "#" + C.n + " " + esc(pname(+C.n)) : "", C.s ? SKN[C.s] + (C.s === "S" ? " (" + BTN[C.bt || "H"] + ")" : "") : "", zz, "…"].filter(Boolean).join("  ");
+  const hint = { num: "numero di maglia, poi la lettera del fondamentale", skill: "fondamentale e voto qui sotto, oppure traccia sul campo (attacco, pallonetto, free ball)",
+    track: "traccia: partenza e arrivo (due clic o trascina; da tastiera zone 1-9" + (C.s === "A" || C.s === "P" ? ", M se murato" : "") + (C.s === "S" ? ", T tipo di battuta" : "") + "), oppure il voto senza traccia",
+    vote: "voto: ++ + ! - / = (simboli o tasti 1-6)" }[C.step] || "";
+  el.innerHTML = esc(txt) + '<div class="h">' + hint + " &middot; Esc abbandona</div>";
+}
+function svGrid() {
+  const el = $("svgrid");
+  if (!C || !C.n || C.step === "num" && !C.s) { el.innerHTML = ""; return; }
+  const vb = s => VOTES.map((x, i) => '<td><button data-s="' + s + '" data-v="' + x + '" title="tasto ' + (i + 1) + '">' + VL(x) + "</button></td>").join("");
+  const types = (C.s === "S" ? BTO.map(b => '<button class="sm' + ((C.bt || "H") === b ? " on" : "") + '" data-bt="' + b + '">' + BTN[b] + "</button>")
+    : ["A", "P", "F"].map(s => '<button class="sm' + ((C.s || C.att || "A") === s ? " on" : "") + '" data-tk="' + s + '">' + SKN[s] + " <kbd>" + SKK[s] + "</kbd></button>")).join("");
+  let x = "";
+  if (C.step === "skill" || C.step === "num") {
+    const cols = ["D", "E", "B"].concat(!LR.rally.length && !LR.st.serve ? ["R"] : []);
+    x = '<table class="vg"><tr>' + cols.map(s => "<th>" + SKN[s] + " <kbd>" + SKK[s] + "</kbd></th>").join("") + "</tr>" +
+      VOTES.map((vv, i) => "<tr>" + cols.map(s => '<td><button data-s="' + s + '" data-v="' + vv + '" title="tasto ' + (i + 1) + '">' + VL(vv) + "</button></td>").join("") + "</tr>").join("") + "</table>" +
+      '<div class="row"><span class="mut">Traccia sul campo:</span>' + types + "</div>";
+  } else if (C.step === "track") x = '<div class="row">' + types + '</div><div class="row"><span class="mut">Senza traccia:</span></div><table class="vg"><tr>' + vb(C.s) + "</tr></table>";
+  else x = '<table class="vg"><tr><th colspan="6">' + SKN[C.s] + "</th></tr><tr>" + vb(C.s) + "</tr></table>";
+  el.innerHTML = x;
+  el.querySelectorAll("button[data-v]").forEach(b => { b.onclick = () => { if (C.s !== b.dataset.s) setSkill(b.dataset.s); commitVote(b.dataset.v); }; });
+  el.querySelectorAll("button[data-bt]").forEach(b => { b.onclick = () => { C.bt = b.dataset.bt; svRender(); }; });
+  el.querySelectorAll("button[data-tk]").forEach(b => { b.onclick = () => { C.att = b.dataset.tk; if (C.step === "track" || C.p0) { C.s = C.att; svRender(); } else setSkill(C.att); }; });
+}
+function svLast() {
+  const el = $("svlast");
+  if (!LIVE) { el.innerHTML = ""; return; }
+  const n = LIVE.ev.length, from = Math.max(0, n - 10);
+  el.innerHTML = '<div class="mut" style="padding:4px 6px">Ultimi inserimenti (clic: rivedi da 2 s prima)</div>' +
+    LIVE.ev.slice(from).map((e, j) => [e, from + j]).reverse().map(([e, i]) => '<div class="ci" data-i="' + i + '"><span class="n">' + fmt(e.t) +
+    '</span><span class="tg">' + esc(evText(e)) + '</span><button class="sm" data-d="-1" title="Anticipa di 0,1 s">&minus;0,1</button><button class="sm" data-d="1" title="Ritarda di 0,1 s">+0,1</button></div>').join("");
+  el.querySelectorAll(".ci").forEach(r => {
+    const e = LIVE.ev[+r.dataset.i];
+    r.onclick = ev => { if (ev.target.closest("button")) return; seek(e.t - 2); v.play(); };
+    r.querySelectorAll("button").forEach(b => { b.onclick = () => { e.t = Math.max(0, Math.round((e.t + 0.1 * b.dataset.d) * 100) / 100); seek(e.t); v.pause(); liveChanged(); }; });
+  });
+}
+function svRender() { if (!svOn) return; svHead(); svCourt(); svComp(); svGrid(); svLast(); }
+function svTick() {
+  const s = fmt(v.currentTime) + " / " + fmt(DUR), p = v.paused ? "&#9654;" : "&#10074;&#10074;";
+  if ($("svtime").textContent !== s) $("svtime").textContent = s;
+  if ($("svplay").dataset.p !== p) { $("svplay").dataset.p = p; $("svplay").innerHTML = p; }
+}
+function setSv(on) {
+  if (on && cine) setCine(false);
+  svOn = on; document.body.classList.toggle("svon", on); $("sv").hidden = !on;
+  (on ? $("svid") : $("vbox")).prepend(v);
+  v.after($("vzc"), $("vzoom"));
+  v.controls = true; C = null;
+  if (on) { svRender(); if (LR && LR.phase === "setup") openSetDlg(); }
+  else { fltFor = null; changed(); }
+}
+$("gosv").onclick = () => { if (!LIVE) openMatchDlg(true); else setSv(true); };
+$("svback").onclick = () => setSv(false);
+$("svplay").onclick = () => { v.paused ? v.play() : v.pause(); };
+$("svb1").onclick = () => seek(v.currentTime - 1);
+$("svf1").onclick = () => seek(v.currentTime + 1);
+$("svfp").onclick = () => stepFrame(-1);
+$("svfn").onclick = () => stepFrame(1);
+$("svspeed").onchange = e => { v.playbackRate = +e.target.value; };
+document.querySelectorAll("#svbtns button,#svbtns2 button[data-f]").forEach(b => { b.onclick = () => fkey(+b.dataset.f); });
+$("svundo").onclick = undo;
+$("svrotb").onclick = () => { if (playing() && !LR.rally.length) addEv({ k: "rot", t: v.currentTime, d: -1 }); };
+$("svrotf").onclick = () => { if (playing() && !LR.rally.length) addEv({ k: "rot", t: v.currentTime, d: 1 }); };
+$("svmatch").onclick = () => openMatchDlg(false);
+$("svexp").onclick = () => {
+  if (!LR || !LR.plist.length) { alert("Nello scout non c'e' ancora nessun punto."); return; }
+  let text;
+  try { const d = LV.scout(LIVE); text = ScoutLib.toDvw(ScoutLib.fromDvw(d.team, d.touchList, d.plist, [], d.dv)); }
+  catch (err) { alert("Non riesco a esportare: " + err.message); return; }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([ScoutLib.dvwBytes(text)], { type: "application/octet-stream" }));
+  a.download = ((LIVE.us || "scout").trim() + " " + (LIVE.them || "").trim() + " " + (LIVE.date || "")).trim().replace(/[\\/:*?"<>|]+/g, "_") + ".dvw"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+};
+
+// ---- partita e rosa
+const ROLE_OPT = [["", "—"], ["P", "palleggiatrice"], ["O", "opposto"], ["B", "banda"], ["C", "centrale"], ["L", "libero"]];
+function rosterFromRaw(lines) {                            // rosa dalle righe [3PLAYERS-*] di un .dvw caricato
+  const RN = { 1: "L", 2: "B", 3: "O", 4: "C", 5: "P" };
+  return (lines || []).map(l => l.split(";")).filter(f => f[1] !== "" && f[1] !== undefined)
+    .map(f => ({ n: Number(f[1]), cog: (f[9] || "").trim(), nome: (f[10] || "").trim(), sop: (f[11] || "").trim(), r: f[12] === "L" ? "L" : RN[f[13]] || "" }));
+}
+function lmRows(list) {
+  $("lmros").tBodies[0].innerHTML = list.map(p => '<tr><td><input type="number" min="0" max="99" value="' + (p.n ?? "") + '"></td><td><input type="text" value="' + esc(p.cog || "") +
+    '"></td><td><input type="text" value="' + esc(p.nome || "") + '"></td><td><input type="text" value="' + esc(p.sop || "") + '"></td><td><select>' +
+    ROLE_OPT.map(([k, l]) => '<option value="' + k + '"' + (k === (p.r || "") ? " selected" : "") + ">" + l + "</option>").join("") + '</select></td><td><button class="sm" data-x>&times;</button></td></tr>').join("");
+  $("lmros").querySelectorAll("button[data-x]").forEach(b => { b.onclick = () => b.closest("tr").remove(); });
+}
+function lmRead() {
+  return [...$("lmros").tBodies[0].rows].map(tr => { const i = tr.querySelectorAll("input"); return { n: parseInt(i[0].value, 10), cog: i[1].value.trim(), nome: i[2].value.trim(), sop: i[3].value.trim(), r: tr.querySelector("select").value }; })
+    .filter(p => Number.isFinite(p.n));
+}
+let lmFirst = false;
+function openMatchDlg(first) {
+  lmFirst = first;
+  const sc = SCOUT && !SCOUT.live && SCOUT.dv && SCOUT.dv.x ? SCOUT : null;
+  const scRoster = sc ? rosterFromRaw(sc.dv.x.raw[sc.side === "loc" ? "3PLAYERS-H" : "3PLAYERS-V"]) : [];
+  const day = (/(\d{4}-\d{2}-\d{2})/.exec((D.cli && D.cli.match) || D.video_name || "") || [])[1] || new Date().toISOString().slice(0, 10);
+  const m = LIVE || { date: day, time: "", home: sc ? sc.side === "loc" : true, us: sc ? sc.team.replace(/^(Locali|Ospiti):\s*/, "") : "", them: "", roster: scRoster };
+  $("lmdate").value = m.date || ""; $("lmtime").value = (m.time || "").replace(/\.00$/, "");
+  document.querySelector('input[name=lmha][value="' + (m.home !== false ? 1 : 0) + '"]').checked = true;
+  $("lmus").value = m.us || ""; $("lmthem").value = m.them || "";
+  lmRows(m.roster && m.roster.length ? m.roster : [{}, {}, {}, {}, {}, {}, {}]);
+  $("lmsc").hidden = !scRoster.length;
+  $("lmsc").onclick = () => lmRows(scRoster);
+  $("lmdlg").showModal();
+}
+$("lmadd").onclick = () => { const r = lmRead(); r.push({}); lmRows(r); };
+$("lmdvw").onclick = () => $("lmfile").click();
+$("lmfile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try {
+    const r = LV.roster(new TextDecoder("windows-1252").decode(await f.arrayBuffer()));
+    lmRows(r.roster); if (!$("lmus").value.trim()) $("lmus").value = r.us;
+    document.querySelector('input[name=lmha][value="' + (r.home ? 1 : 0) + '"]').checked = true;
+  } catch (err) { alert("Non riesco a leggere la rosa: " + err.message); }
+};
+$("lmno").onclick = () => $("lmdlg").close();
+$("lmok").onclick = () => {
+  const roster = lmRead(), nums = roster.map(p => p.n);
+  if (roster.length < 6) { alert("Servono almeno sei giocatrici in rosa."); return; }
+  if (new Set(nums).size !== nums.length) { alert("In rosa ci sono numeri ripetuti."); return; }
+  const tm = $("lmtime").value.trim().replace(/[:,]/g, ".");
+  const m = { date: $("lmdate").value, time: /^\d{1,2}\.\d{2}$/.test(tm) ? tm.padStart(5, "0") + ".00" : /^\d{1,2}\.\d{2}\.\d{2}$/.test(tm) ? tm.padStart(8, "0") : "00.00.00",
+    home: document.querySelector('input[name=lmha]:checked').value === "1", us: $("lmus").value.trim(), them: $("lmthem").value.trim(), roster };
+  LIVE = Object.assign(LIVE || { v: 1, ev: [] }, m);
+  $("lmdlg").close(); liveChanged();
+  if (lmFirst) setSv(true);
+};
+
+// ---- impostazione del set
+let lsPairSet = false;
+const rOpt = (list, cur, none) => (none !== undefined ? '<option value="">' + none + "</option>" : "") +
+  list.map(p => '<option value="' + p.n + '"' + (p.n === cur ? " selected" : "") + ">#" + p.n + " " + esc(p.cog || p.sop || "") + "</option>").join("");
+function lsLu() { return [1, 2, 3, 4, 5, 6].map(z => { const s = document.querySelector('#lszones select[data-z="' + z + '"]'); return s && s.value ? +s.value : null; }); }
+function lsUpdate() {
+  const lu = lsLu(), ros = LIVE.roster, inLu = ros.filter(p => lu.includes(p.n));
+  const cs = +$("lsset").value || (ros.find(p => p.r === "P" && lu.includes(p.n)) || {}).n;
+  $("lsset").innerHTML = rOpt(inLu, cs, "—");
+  const p1 = +$("lsp1").value, p2 = +$("lsp2").value, setter = +$("lsset").value;
+  const prop = lu.every(n => n !== null) && setter ? RU.pair(lu, setter) : [];
+  const a = lsPairSet ? p1 : prop[0], b = lsPairSet ? p2 : prop[1];
+  $("lsp1").innerHTML = rOpt(inLu, a, "—"); $("lsp2").innerHTML = rOpt(inLu, b, "—");
+  $("lspair").textContent = prop.length ? "(proposta: #" + prop[0] + " e #" + prop[1] + ", le centrali con la palleggiatrice in P1)" : "";
+}
+function openSetDlg() {
+  if (!LIVE || !LR || LR.phase !== "setup") return;
+  if ($("lsdlg").open) return;
+  const n = LR.sets.length + 1, prev = [...LIVE.ev].reverse().find(e => e.k === "set"), ros = LIVE.roster.slice().sort((a, b) => a.n - b.n);
+  $("lstitle").textContent = "Set " + n + (n === 5 ? " (tie-break)" : "");
+  const lu = prev ? prev.lu : [null, null, null, null, null, null], players = ros.filter(p => p.r !== "L");
+  $("lszones").innerHTML = [4, 3, 2, 5, 6, 1].map(z => "<label>Zona " + z + (z === 1 ? " (batte)" : "") + ' <select data-z="' + z + '">' + rOpt(players, lu[z - 1], "—") + "</select></label>").join("");
+  const libs = ros.filter(p => p.r === "L");
+  $("lsset").innerHTML = rOpt(ros, prev ? prev.setter : (ros.find(p => p.r === "P") || {}).n, "—");
+  $("lslib").innerHTML = rOpt(ros, prev ? prev.lib : (libs[0] || {}).n, "nessuno");
+  $("lslib2").innerHTML = rOpt(ros, prev ? prev.lib2 : (libs[1] || {}).n, "nessuno");
+  lsPairSet = !!(prev && prev.pair && prev.pair.length);
+  $("lsp1").innerHTML = rOpt(ros, prev && prev.pair ? prev.pair[0] : null, "—"); $("lsp2").innerHTML = rOpt(ros, prev && prev.pair ? prev.pair[1] : null, "—");
+  // chi batte: nei set 2-4 l'altra squadra rispetto al set prima; lato: l'opposto del set prima
+  document.querySelectorAll("input[name=lsserve]").forEach(r => { r.checked = !!prev && n < 5 && r.value === (prev.serve ? "0" : "1"); });
+  const left = prev ? !(prev.left !== false) : true;
+  document.querySelectorAll("input[name=lsside]").forEach(r => { r.checked = r.value === (left ? "L" : "R"); });
+  $("lserr").textContent = "";
+  lsUpdate();
+  $("lsdlg").showModal();
+}
+$("lszones").onchange = () => lsUpdate();
+$("lsset").onchange = () => { lsPairSet = false; lsUpdate(); };
+$("lsp1").onchange = $("lsp2").onchange = () => { lsPairSet = true; };
+$("lsno").onclick = () => $("lsdlg").close();
+$("lsok").onclick = () => {
+  const lu = lsLu(), setter = +$("lsset").value || null, lib = +$("lslib").value || null, lib2 = +$("lslib2").value || null;
+  const pair = [+$("lsp1").value, +$("lsp2").value].filter(Boolean), sv = document.querySelector("input[name=lsserve]:checked"), sd = document.querySelector("input[name=lsside]:checked");
+  const err = lu.some(n => n === null) ? "Manca qualcuna delle sei giocatrici." : new Set(lu).size !== 6 ? "La stessa giocatrice e' in due zone." :
+    !setter || !lu.includes(setter) ? "La palleggiatrice deve essere tra le sei." : lib && lu.includes(lib) ? "Il libero non puo' essere tra le sei in formazione." :
+    lib && (pair.length !== 2 || pair[0] === pair[1]) ? "Scegli le due giocatrici con cui si cambia il libero." : !sv ? "Indica chi batte per primo." : "";
+  if (err) { $("lserr").textContent = err; return; }
+  $("lsdlg").close();
+  addEv({ k: "set", t: Math.round(v.currentTime * 100) / 100, lu, setter, serve: sv.value === "1", lib, lib2: lib2 && lib2 !== lib ? lib2 : null, pair: lib ? pair : RU.pair(lu, setter), left: sd.value === "L" });
+};
+
+// ---- cambio e provvedimento
+function openSubDlg(out) {
+  if (!playing()) { if (LR && LR.phase === "setup") openSetDlg(); return; }
+  const st = LR.st, ros = LIVE.roster.slice().sort((a, b) => a.n - b.n);
+  const on = ros.filter(p => st.lu.includes(p.n) || p.n === st.lib), off = ros.filter(p => !st.lu.includes(p.n) && p.n !== st.lib);
+  $("lsubout").innerHTML = rOpt(on, out, "—"); $("lsubin").innerHTML = rOpt(off, null, "—");
+  $("lsubdlg").showModal();
+}
+$("lsubno").onclick = () => $("lsubdlg").close();
+$("lsubok").onclick = () => {
+  const o = +$("lsubout").value, n = +$("lsubin").value;
+  if (!o || !n) { alert("Scegli chi esce e chi entra."); return; }
+  $("lsubdlg").close(); addEv({ k: "sub", t: Math.round(v.currentTime * 100) / 100, out: o, in: n });
+};
+function openSanDlg() {
+  if (!playing()) { if (LR && LR.phase === "setup") openSetDlg(); return; }
+  $("lsann").innerHTML = rOpt(LIVE.roster.slice().sort((a, b) => a.n - b.n), null);
+  $("lsandlg").showModal();
+}
+$("lsanno").onclick = () => $("lsandlg").close();
+$("lsanok").onclick = () => {
+  const who = document.querySelector("input[name=lsanw]:checked").value, kind = $("lsank").value, n = +$("lsann").value || null;
+  $("lsandlg").close();
+  const e = { k: "san", t: Math.round(v.currentTime * 100) / 100, who, kind };
+  if (who === "noi") e.n = n;
+  addEv(e);
+  // espulsione o squalifica di una giocatrice in campo: si apre il cambio
+  if (who === "noi" && (kind === "esp" || kind === "squ") && playing() && (LR.st.lu.includes(n) || LR.st.lib === n)) openSubDlg(n);
+};
+
 document.addEventListener("keydown", e => {
+  if (svKey(e)) return;
   if ($("zdlg").open) return;
   if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && document.activeElement.type !== "checkbox") return;
   const k = e.key.toLowerCase(), all = SCOUT && fltOn() ? sorted().filter(isVisible) : sorted(), i = all.indexOf(sel);
+  // nella vista Scout restano solo i tasti del video (le lettere sono dello scout)
+  if (svOn && !(k === " " || k === "," || k === "." || k === "arrowleft" || k === "arrowright" || ((e.ctrlKey || e.metaKey) && k === "s"))) return;
   if ((e.ctrlKey || e.metaKey) && k === "s") { e.preventDefault(); saveFile(false); }
   else if (k === "f" && !e.ctrlKey && !e.metaKey) snapFrame();
   else if (k === "z" && !e.ctrlKey && !e.metaKey) zoomTo(1, 0.5, 0.5);
@@ -2250,6 +3070,7 @@ window.addEventListener("resize", draw);
 })();
 if (sorted().length) { const w = v1 - v0; v0 = clamp(R[0].start - 30, 0, Math.max(0, DUR - w)); v1 = v0 + w; seek(R[0].start); }
 restoreScout(store.loadScout());
+LIVE = D.empty ? null : store.loadLive(); liveRefresh();
 renderRows(); stats(); draw(); markDirty(!!(saved && saved.length)); requestAnimationFrame(tick);
 </script>
 </body>

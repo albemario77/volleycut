@@ -128,7 +128,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
         <button id="fprev" title="Fotogramma precedente (virgola o Alt+freccia sinistra)">&#9664;|</button>
         <button id="fnext" title="Fotogramma successivo (punto o Alt+freccia destra)">|&#9654;</button>
         <button id="snap" title="Salva come immagine il fotogramma attuale del video (F)">Foto</button>
-        <button id="scout" title="Carica lo scout (file .xlsx esportato da Volley Coach) e controllalo">Carica scout&hellip;</button>
+        <button id="scout" title="Carica lo scout (file .xlsx esportato da Volleyball Scout) e controllalo">Carica scout&hellip;</button>
         <button id="scoutd" title="Carica lo scout in formato DataVolley (file .dvw): ogni punto e' scritto in chiaro, con free ball e zone di battuta e attacco">Carica scout .dvw&hellip;</button>
         <input type="file" id="sfile" accept=".xlsx" hidden>
         <input type="file" id="sfiled" accept=".dvw,text/plain,application/octet-stream" hidden>
@@ -263,7 +263,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(
 <datalist id="tags"><option value="ace"><option value="muro"><option value="attacco"><option value="difesa"><option value="errore"><option value="scambio-lungo"><option value="punto-A"><option value="punto-B"></datalist>
 
 <script>
-// Lettura e controllo dello scout (export xlsx di Volley Coach). Nessuna dipendenza:
+// Lettura e controllo dello scout (export xlsx di Volleyball Scout). Nessuna dipendenza:
 // funziona nel browser (incorporato in review.html) e in Node (per i test).
 //
 // Formato atteso: riga 1 = titolo ("Locali: Under 19"), riga 2 = intestazione
@@ -544,7 +544,7 @@ const ScoutLib = (function () {
   //   [5] bersaglio dell'alzata  [6] zona di partenza  [7] zona di arrivo  [8] sottozona di arrivo
   //   [9] tipo di colpo  [10] giocatori (muro o ricezione)  [11] codice speciale  [12...] nota libera
   // "~" = non indicato. Le tabelle seguono il manuale DataVolley (come le riporta il lettore libero openvolley/datavolley).
-  const DV_SERVE = { H: "float da ferma", M: "float in salto", Q: "in salto", T: "topspin" };
+  const DV_SERVE = { H: "float piedi a terra", M: "float in salto", Q: "jump spin", T: "topspin" };
   const DV_BALL = { H: "palla alta", M: "mezza palla", Q: "palla veloce", T: "palla tesa", U: "palla super", F: "palla fast", N: "palla slide", O: "altra palla" };
   const DV_SUB = {
     A: { H: "colpo forte", P: "colpo piazzato", T: "pallonetto" },
@@ -717,8 +717,10 @@ const ScoutLib = (function () {
       }
       if (g) {
         gen.push([g[1] === "*" ? "loc" : "osp", g[2]]);
-        // errore generico della nostra squadra senza altri tocchi: una riga, come nell'xlsx
-        if (g[1] === mine && g[2] === "=" && gen.length === 1 && !cur.length)
+        // errore generico della nostra squadra segnato per primo (non la contropartita automatica di un tocco che
+        // chiude il punto): una riga, come nell'xlsx, anche quando viene dopo altri tocchi
+        const lv = cur.length ? cur[cur.length - 1].voto : "";
+        if (g[1] === mine && g[2] === "=" && gen.length === 1 && lv !== "++" && lv !== "=")
           cur.push({ id: id++, tipo: "Errore generico", voto: "", cognome: "", numero: null, posG: "", posP, set: s, loc, osp });
         continue;
       }
@@ -780,7 +782,7 @@ const ScoutLib = (function () {
     if (b[0] === 0x50 && b[1] === 0x4b) return loadScout(await readXlsx(b));
     let text = new TextDecoder("utf-8").decode(b);
     if (text.includes("�")) text = new TextDecoder("windows-1252").decode(b);
-    if (!isDvw(text)) throw new Error("Formato non riconosciuto: serve l'xlsx di Volley Coach oppure un file .dvw (DataVolley).");
+    if (!isDvw(text)) throw new Error("Formato non riconosciuto: serve l'xlsx di Volleyball Scout oppure un file .dvw (DataVolley).");
     return loadDvw(text);
   }
 

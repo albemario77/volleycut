@@ -2716,8 +2716,16 @@ function liveToScout() {
   SCOUT = ScoutLib.fromDvw(d.team, d.touchList, d.plist, [], d.dv); SCOUT.live = true; SCOUT.file = "scout fatto nella pagina";
   // abbinamento clip <-> punti dall'istante: la clip con Tieni che contiene il primo tocco (o l'ER/PT) del punto
   const k = kept();
-  R.forEach(r => { delete r.sp; delete r.spm; });
-  d.plist.forEach((q, i) => { const r = k.find(c => q.t0 >= c.start - 1 && q.t0 <= c.end + 1); if (r && !r.sp) r.sp = i + 1; });
+  // gli abbinamenti corretti a mano (spm) restano; per gli altri: la clip che contiene il primo tocco, se no quella che
+  // contiene la fine del punto, se no quella che si sovrappone allo scambio (una battuta segnata prima della clip non lo perde)
+  R.forEach(r => { if (!r.spm) delete r.sp; });
+  const taken = new Set(R.filter(r => r.spm && r.sp).map(r => r.sp)), free = c => !c.sp && !c.spm;
+  const near = (c, x) => x >= c.start - 1 && x <= c.end + 1;
+  d.plist.forEach((q, i) => {
+    if (taken.has(i + 1)) return;
+    const r = k.find(c => free(c) && near(c, q.t0)) || k.find(c => free(c) && near(c, q.t)) || k.find(c => free(c) && q.t0 <= c.end && q.t >= c.start);
+    if (r) r.sp = i + 1;
+  });
   refreshMatch();
 }
 function evText(e) {

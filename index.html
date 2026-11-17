@@ -132,7 +132,14 @@ button.on{outline:2px solid var(--acc)}
 #svpanel>#svlast{flex:1 1 0;min-height:140px;overflow:auto;border-top:1px solid var(--line);margin-top:4px}
 #svlast .lh{position:sticky;top:0;background:var(--bg);padding:4px 6px}
 #svlast .ci{padding:3px 6px;gap:6px}
-#svlast .ci .tg{color:var(--fg)}
+#svlast .ci .tg{color:var(--fg);flex:1;overflow:hidden;text-overflow:ellipsis}
+#svlast .ci .sc{font-weight:600;font-size:12px;padding:0 5px;border-radius:4px}
+#svlast .ci .sc.w{background:color-mix(in srgb,var(--ok) 25%,transparent)}
+#svlast .ci .sc.l{background:color-mix(in srgb,var(--bad) 22%,transparent)}
+#svlast .ci.st{font-weight:600;background:color-mix(in srgb,var(--fg) 6%,transparent)}
+#svlast .acts{display:flex;flex-wrap:wrap;gap:4px;padding:4px 6px 6px 40px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--acc) 10%,transparent)}
+#svlast .insm{padding:3px 6px;color:var(--acc);font-weight:600;border-bottom:2px solid var(--acc)}
+.svins{background:color-mix(in srgb,var(--acc) 15%,transparent);border:1px solid var(--acc);border-radius:6px;padding:4px 8px}
 .lsgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 10px;margin:6px 0}
 .lsgrid select{width:100%}
 #lmros input[type=text]{width:9em}#lmros input[type=number]{width:4.2em}
@@ -298,6 +305,7 @@ button.on{outline:2px solid var(--acc)}
         oppure <kbd>1</kbd>-<kbd>6</kbd>. Esempio: <kbd>12</kbd> <kbd>A</kbd> <kbd>4</kbd> <kbd>6</kbd> <kbd>#</kbd>.<br>
         <kbd>Backspace</kbd> annulla (dentro un tocco: l'ultimo tasto) &middot; <kbd>Esc</kbd> abbandona il tocco &middot; <kbd>F1</kbd>/<kbd>F2</kbd> nostro ER/PT &middot;
         <kbd>F3</kbd>/<kbd>F4</kbd> ER/PT avversario &middot; <kbd>F5</kbd>/<kbd>F6</kbd> time-out nostro/avversario &middot; <kbd>F7</kbd> provvedimento &middot; <kbd>F8</kbd> cambio &middot; <kbd>F9</kbd> nota.<br>
+        Correzione: clic su una riga dell'elenco per selezionarla, poi Modifica, Elimina (<kbd>Canc</kbd>), Inserisci prima, All'istante del video; <kbd>Esc</kbd> toglie la selezione o chiude l'inserimento.<br>
         Video: <kbd>spazio</kbd> play/pausa &middot; frecce &plusmn;5 s (con <kbd>maiusc</kbd> &plusmn;1 s) &middot; <kbd>,</kbd> <kbd>.</kbd> fotogramma.
         Le lettere sono tutte a sinistra: la mano sinistra sceglie il fondamentale. Nella vista Scout <kbd>F</kbd> e <kbd>Z</kbd> non sono foto e zoom del video.</details>
       <span style="flex:1"></span>
@@ -366,6 +374,15 @@ button.on{outline:2px solid var(--acc)}
   <div class="row"><label>Quale <select id="lsank"><option value="avv">avvertimento</option><option value="pen">penalita' (punto e servizio all'altra squadra)</option>
     <option value="esp">espulsione</option><option value="squ">squalifica</option><option value="rit">ritardo di gioco</option></select></label></div>
   <div class="row"><button class="pri" id="lsanok">Conferma</button><button id="lsanno">Annulla</button></div>
+</dialog>
+<dialog id="ledlg" style="max-width:640px">
+  <h2 id="letitle">Correggi</h2>
+  <div class="row"><label>Istante <input type="number" id="let" step="0.1" min="0" style="width:7em"> s</label><span class="mut" id="letf"></span>
+    <button class="sm" id="letnow" title="Usa l'istante a cui e' fermo il video">istante del video</button></div>
+  <div id="lebody"></div>
+  <p class="mut">Punteggio, rotazione e libero di tutto cio' che segue si ricalcolano da soli.</p>
+  <p class="bad" id="leerr"></p>
+  <div class="row"><button class="pri" id="leok">Salva</button><button id="leno">Annulla</button></div>
 </dialog>
 <dialog id="dlg">
   <h2>Minivideo dalla selezione</h2>
@@ -1323,7 +1340,7 @@ const ScoutLib = (function () {
       const after = Rules.point(st, won);
       const bare = !gens.length && after.rotated;                     // free ball "#": la riga del punto ha gia' la rotazione nuova
       const q = { set, loc: sc.loc, osp: sc.osp, w: won ? side : opp, gen: lt && (lt.voto === "++" || lt.voto === "=") ? null : gens[0] || null,
-        rot: "P" + Rules.rot(bare ? after : s0), lu: (bare ? after : s0).lu.slice(), tm: tmOf(t), gens, t, t0: rally.length ? rally[0].t : t, ev: i };
+        rot: "P" + Rules.rot(bare ? after : s0), lu: (bare ? after : s0).lu.slice(), tm: tmOf(t), gens, t, t0: rally.length ? rally[0].t : t, ev: i, ei: i };   // ei = evento che chiude il punto
       if (ev.length) q.ev = ev;
       if (evr.length) q.evr = evr;
       out.plist.push(q);
@@ -2310,7 +2327,7 @@ function loadText(text, name) {
     r, { start: +r.start, end: +r.end, reasons: r.reasons || [] }));
   normEdited(R);
   restoreScout(d.meta && d.meta.scout);
-  LIVE = (d.meta && d.meta.live) || null; liveRefresh(); C = null;
+  LIVE = (d.meta && d.meta.live) || null; SEL = INS = null; liveRefresh(); C = null;
   sel = null; lastSave = name ? hhmm() : lastSave;
   if (sorted().length) { const w = v1 - v0; v0 = clamp(R[0].start - 30, 0, Math.max(0, DUR - w)); v1 = v0 + w; seek(R[0].start); }
   changed(); markDirty(false); return true;
@@ -2664,6 +2681,10 @@ $("fnext").onclick = $("cfnext").onclick = () => stepFrame(1);
 // scout importato: se non c'e' uno scout importato, filtri e abbinamento usano questo.
 const LV = ScoutLib.Live, RU = ScoutLib.Rules;
 let LIVE = null, LR = null, svOn = false, C = null;      // C = tocco in composizione
+// correzione: SEL = evento selezionato nell'elenco; INS = posizione in cui si inseriscono i nuovi eventi (null = in coda).
+// Durante l'inserimento LR e' il rigioco fino a INS (campo, battuta e punteggio di quel momento), LRF quello di tutto.
+let SEL = null, INS = null, LRF = null, selScroll = false;
+const evView = () => (!LIVE ? [] : INS === null ? LIVE.ev : LIVE.ev.slice(0, INS));
 const VOTES = ["#", "+", "!", "-", "/", "="], VL = x => (x === "#" ? "++" : x);
 const SKN = { S: "Battuta", R: "Ricezione", A: "Attacco", P: "Pallonetto", F: "Free ball", D: "Difesa", E: "Alzata", B: "Muro" };
 // lettere da tastiera tutte nella meta' sinistra (la mano destra resta su numeri e voti); nella vista Scout F e Z
@@ -2675,19 +2696,22 @@ const TRACK = s => "SAPF".includes(s);
 const pname = n => { const p = LIVE && LIVE.roster.find(x => x.n === n), c = p ? String(p.cog || "") : ""; return p ? p.sop || c.charAt(0) + c.slice(1).toLowerCase() : ""; };
 function liveLeft() {                                     // la nostra meta' nel video: a sinistra?
   let left = true;
-  for (const e of LIVE ? LIVE.ev : []) { if (e.k === "set") left = e.left !== false; else if (e.k === "side") left = !left; }
+  for (const e of evView()) { if (e.k === "set") left = e.left !== false; else if (e.k === "side") left = !left; }
   return left;
 }
 const playing = () => !!(LR && LR.phase === "play" && LR.st);
 const rallyState = () => (LR && LR.st ? LR.rs || LR.st : null);
 const serverNo = () => (playing() && !LR.rally.length && LR.st.serve ? LR.st.lu[0] : null);
 function liveRefresh() {                                  // rigioco e, se serve, scout per filtri e abbinamento
-  LR = LIVE ? LV.replay(LIVE) : null;
+  if (LIVE && INS !== null && INS > LIVE.ev.length) INS = null;
+  if (LIVE && SEL !== null && SEL >= LIVE.ev.length) SEL = null;
+  LRF = LIVE ? LV.replay(LIVE) : null;
+  LR = LIVE && INS !== null ? LV.replay(Object.assign({}, LIVE, { ev: LIVE.ev.slice(0, INS) })) : LRF;
   if (!SCOUT || SCOUT.live) liveToScout();
 }
 function liveChanged() { liveRefresh(); store.save(); markDirty(true); svRender(); }
 function liveToScout() {
-  if (!LIVE || !LR || !LR.plist.length) { if (SCOUT && SCOUT.live) { SCOUT = null; refreshMatch(); } return; }
+  if (!LIVE || !LRF || !LRF.plist.length) { if (SCOUT && SCOUT.live) { SCOUT = null; refreshMatch(); } return; }
   const d = LV.scout(LIVE);
   SCOUT = ScoutLib.fromDvw(d.team, d.touchList, d.plist, [], d.dv); SCOUT.live = true; SCOUT.file = "scout fatto nella pagina";
   // abbinamento clip <-> punti dall'istante: la clip con Tieni che contiene il primo tocco (o l'ER/PT) del punto
@@ -2713,10 +2737,103 @@ function evText(e) {
 // ---- inserimento
 function addEv(e) {
   if (!LIVE) return;
+  if (INS !== null) { LIVE.ev.splice(INS, 0, e); INS++; C = null; liveChanged(); return; }   // inserimento in mezzo: niente salti
   const before = LR ? LR.plist.length : 0;
   LIVE.ev.push(e); C = null; liveChanged();
   if (LR.plist.length > before) afterPoint(e);
 }
+// ---- correzione di eventi gia' inseriti
+function selEv(i) { SEL = i; selScroll = true; svRender(); }
+function delEv(i) {
+  const e = LIVE && LIVE.ev[i];
+  if (!e) return;
+  const msg = e.k === "set" ? "Eliminare l'inizio del set? I tocchi che seguono resteranno senza set finche' non lo reimposti." : "Eliminare \"" + evText(e) + "\" (" + fmt(e.t) + ")?";
+  if (!confirm(msg)) return;
+  LIVE.ev.splice(i, 1);
+  if (INS !== null && i < INS) INS--;
+  SEL = LIVE.ev.length ? Math.min(i, LIVE.ev.length - 1) : null;
+  liveChanged();
+}
+function insBefore(i) {
+  INS = i; SEL = null; C = null;
+  const e = LIVE.ev[i];
+  if (e) { v.pause(); seek(Math.max(0, e.t - 2)); }
+  liveChanged();
+}
+function insEnd() { INS = null; C = null; liveChanged(); }
+function evMove(i, t) {
+  const e = LIVE.ev[i]; if (!e) return;
+  e.t = Math.max(0, Math.round(t * 100) / 100); seek(e.t); v.pause(); liveChanged();
+}
+const evLeftAt = i => { let left = true; for (const e of LIVE.ev.slice(0, i + 1)) { if (e.k === "set") left = e.left !== false; else if (e.k === "side") left = !left; } return left; };
+const optList = (pairs, cur) => pairs.map(([v, l]) => '<option value="' + esc(String(v)) + '"' + (String(v) === String(cur ?? "") ? " selected" : "") + ">" + esc(l) + "</option>").join("");
+const ZOPT = [["", "—"]].concat([1, 2, 3, 4, 5, 6, 7, 8, 9].map(z => [String(z), "zona " + z]));
+let leIdx = null;
+function openEvDlg(i) {
+  const e = LIVE.ev[i]; if (!e) return;
+  leIdx = i;
+  const ros = LIVE.roster.slice().sort((a, b) => a.n - b.n), who = [["noi", "noi"], ["loro", "avversari"]];
+  $("letitle").textContent = "Correggi: " + evText(e);
+  $("let").value = e.t; $("letf").textContent = fmt(e.t); $("leerr").textContent = "";
+  let x = "";
+  if (e.k === "t") {
+    x = '<div class="row"><label>Giocatrice <select id="len">' + rOpt(ros, e.n) + "</select></label>" +
+      '<label>Fondamentale <select id="les">' + optList(Object.keys(SKN).map(s => [s, SKN[s]]), e.s) + "</select></label>" +
+      '<label>Voto <select id="lev">' + optList(VOTES.map(x => [x, VL(x)]), e.v) + "</select></label></div>" +
+      '<div class="row" id="lebtr"><label>Tipo di battuta <select id="lebt">' + optList(BTO.map(b => [b, BTN[b]]), e.bt || "H") + "</select></label></div>" +
+      '<div class="row" id="letrr"><label>Partenza <select id="lez0">' + optList(ZOPT, e.z0) + "</select></label>" +
+      '<label>Arrivo <select id="lez1">' + optList(ZOPT, e.z1) + "</select></label>" +
+      '<label id="lepmr"><input type="checkbox" id="lepm"' + (e.pm ? " checked" : "") + "> murato nella traccia</label></div>";
+  } else if (e.k === "g") {
+    x = '<div class="row"><label>Squadra <select id="lewho">' + optList(who, e.who) + "</select></label>" +
+      '<label>Tipo <select id="ler">' + optList([["=", "errore generico (ER)"], ["#", "punto generico (PT)"]], e.r) + "</select></label></div>";
+  } else if (e.k === "to") x = '<div class="row"><label>Time-out di <select id="lewho">' + optList(who, e.who) + "</select></label></div>";
+  else if (e.k === "note") x = '<div class="row"><label>Nota <input type="text" id="letxt" style="width:30em" value="' + esc(e.txt || "") + '"></label></div>';
+  else if (e.k === "sub") x = '<div class="row"><label>Esce <select id="leout">' + rOpt(ros, +e.out) + '</select></label><label>Entra <select id="lein">' + rOpt(ros, +e.in) + "</select></label></div>";
+  else if (e.k === "san") x = '<div class="row"><label>A chi <select id="lewho">' + optList([["noi", "nostra giocatrice"], ["panchina", "nostra panchina"], ["loro", "avversari"]], e.who) + "</select></label>" +
+      '<select id="lesn">' + rOpt(ros, e.n, "—") + '</select><label>Quale <select id="lekind">' + optList(Object.keys(LV.SAN).map(k => [k, LV.SAN[k]]), e.kind) + "</select></label></div>";
+  else if (e.k === "rot") x = '<div class="row"><label>Correzione <select id="led">' + optList([["1", "rotazione avanti"], ["-1", "rotazione indietro"]], e.d) + "</select></label></div>";
+  else if (e.k === "set") x = '<p class="mut">Della riga d\'inizio set qui si cambia solo l\'istante. Per la formazione usa i cambi o la correzione della rotazione; per rifarla da capo elimina l\'inizio del set e reimpostalo.</p>';
+  $("lebody").innerHTML = x;
+  if (e.k === "t") { $("les").onchange = leShow; leShow(); }
+  $("ledlg").showModal();
+}
+function leShow() {
+  const s = $("les").value;
+  $("lebtr").hidden = !(s === "S" || s === "R");
+  $("letrr").hidden = !TRACK(s);
+  $("lepmr").hidden = !(s === "A" || s === "P");
+}
+$("letnow").onclick = () => { $("let").value = Math.round(v.currentTime * 100) / 100; $("letf").textContent = fmt(v.currentTime); };
+$("let").oninput = () => { $("letf").textContent = fmt(+$("let").value || 0); };
+$("leno").onclick = () => $("ledlg").close();
+$("leok").onclick = () => {
+  const e0 = LIVE.ev[leIdx]; if (!e0) { $("ledlg").close(); return; }
+  const t = +$("let").value;
+  if (!(t >= 0)) { $("leerr").textContent = "Istante non valido."; return; }
+  const e = Object.assign({}, e0, { t: Math.round(t * 100) / 100 });
+  if (e.k === "t") {
+    e.n = +$("len").value; e.s = $("les").value; e.v = $("lev").value;
+    if (e.s === "S" || e.s === "R") e.bt = $("lebt").value; else delete e.bt;
+    if (!TRACK(e.s)) { delete e.z0; delete e.z1; delete e.p0; delete e.p1; delete e.pm; }
+    else {
+      const left = evLeftAt(leIdx), z0 = $("lez0").value, z1 = $("lez1").value;
+      // zona cambiata: il punto torna al centro della zona; zona tolta: niente punto
+      if (z0 !== (e0.z0 || "")) { if (z0) { e.z0 = z0; e.p0 = LV.zoneCenter(z0, left, e.s === "S"); } else { delete e.z0; delete e.p0; } }
+      if (z1 !== (e0.z1 || "")) { if (z1) { e.z1 = z1; e.p1 = LV.zoneCenter(z1, !left); } else { delete e.z1; delete e.p1; } }
+      if ((e.s === "A" || e.s === "P") && $("lepm").checked && e.p0 && e.p1) { if (!e.pm || z0 !== (e0.z0 || "") || z1 !== (e0.z1 || "")) e.pm = [left ? 51 : 49, Math.round((e.p0[1] + e.p1[1]) / 2)]; }
+      else delete e.pm;
+      if (!(e.s === "A" || e.s === "P")) delete e.pm;
+      if (!e.p0) { delete e.p1; delete e.z1; delete e.pm; }
+    }
+  } else if (e.k === "g") { e.who = $("lewho").value; e.r = $("ler").value; }
+  else if (e.k === "to") e.who = $("lewho").value;
+  else if (e.k === "note") { const s = $("letxt").value.trim(); if (!s) { $("leerr").textContent = "La nota e' vuota."; return; } e.txt = s; }
+  else if (e.k === "sub") { e.out = +$("leout").value; e.in = +$("lein").value; if (e.out === e.in) { $("leerr").textContent = "Chi esce e chi entra sono la stessa giocatrice."; return; } }
+  else if (e.k === "san") { e.who = $("lewho").value; e.kind = $("lekind").value; if (e.who === "noi") e.n = +$("lesn").value || null; else delete e.n; }
+  else if (e.k === "rot") e.d = +$("led").value;
+  LIVE.ev[leIdx] = e; $("ledlg").close(); SEL = leIdx; seek(e.t); v.pause(); liveChanged();
+};
 function afterPoint(e) {
   if (LR.phase === "setup") { v.pause(); setTimeout(openSetDlg, 50); return; }
   if (LR.phase === "over") { v.pause(); svRender(); return; }
@@ -2773,6 +2890,11 @@ function stepBack() {
 function undo() {
   if (C) { C = null; svRender(); return; }
   if (!LIVE || !LIVE.ev.length) return;
+  if (INS !== null) {                                       // in inserimento: si toglie l'ultimo inserito, prima del punto d'inserimento
+    if (INS === 0) return;
+    if (LIVE.ev[INS - 1].k === "set" && !confirm("Annullare l'inizio del set?")) return;
+    LIVE.ev.splice(INS - 1, 1); INS--; liveChanged(); return;
+  }
   const e = LIVE.ev[LIVE.ev.length - 1];
   if (e.k === "set" && !confirm("Annullare l'inizio del set " + (LR.sets.length) + "?")) return;
   LIVE.ev.pop(); liveChanged();
@@ -2804,7 +2926,8 @@ function svKey(e) {
   const k = e.key, kl = k.toLowerCase();
   if (/^F[1-9]$/.test(k)) { e.preventDefault(); fkey(+k.slice(1)); return true; }
   if (/^F\d+$/.test(k)) { e.preventDefault(); return true; }
-  if (k === "Escape") { if (C) { C = null; svRender(); } return true; }
+  if (k === "Escape") { if (C) C = null; else if (SEL !== null) SEL = null; else if (INS !== null) { insEnd(); return true; } svRender(); return true; }
+  if (k === "Delete") { if (!C && SEL !== null) delEv(SEL); return true; }
   if (k === "Backspace") { e.preventDefault(); if (C) stepBack(); else undo(); return true; }
   if (e.ctrlKey || e.metaKey || e.altKey) return false;
   if (/^[0-9]$/.test(k)) { svDigit(+k); return true; }
@@ -2862,7 +2985,7 @@ function svCourt() {
   const trk = (p0, pm, p1, cls) => { const pts = [p0, pm, p1].filter(Boolean); if (!pts.length) return "";
     return (pts.length > 1 ? '<polyline points="' + pts.map(p => sx(p[0]) + "," + sy(p[1])).join(" ") + '" class="trk ' + cls + '"/>' : "") +
       pts.map(p => '<circle cx="' + sx(p[0]) + '" cy="' + sy(p[1]) + '" r="' + (cls ? 3 : 5) + '" class="tpt"/>').join(""); };
-  const last = LIVE && [...LIVE.ev].reverse().find(e => e.k === "t" || e.k === "set");
+  const last = SEL !== null && LIVE.ev[SEL] && LIVE.ev[SEL].k === "t" ? LIVE.ev[SEL] : LIVE && [...evView()].reverse().find(e => e.k === "t" || e.k === "set");
   if (last && last.k === "t" && last.p0 && !C) s += trk(last.p0, last.pm, last.p1, "old");
   if (C && (C.p0 || C.p1)) s += trk(C.p0, C.pm, C.p1, "");
   if (st && LR.phase === "play") {
@@ -2916,10 +3039,13 @@ function svHead() {
   if (LR.phase === "over") x += '<p class="good">Partita finita (set ' + won[0] + "-" + won[1] + ").</p>";
   if (LR.issues.length) x += '<p class="bad">' + esc(LR.issues[LR.issues.length - 1]) + "</p>";
   if (svNote) { x += '<p class="mut">' + esc(svNote) + "</p>"; svNote = ""; }
+  if (INS !== null) x += '<div class="row svins"><span>Inserimento ' + (LIVE.ev[INS] ? "prima di <b>" + esc(evText(LIVE.ev[INS])) + "</b> (" + fmt(LIVE.ev[INS].t) + ")" : "in coda") +
+    ': punteggio e campo sono quelli di quel momento.</span><button class="sm" id="svinsend">Fine inserimento <kbd>Esc</kbd></button></div>';
   const lt = LR.rally[LR.rally.length - 1];
   if (lt && lt.cod && lt.cod[0] === "A" && lt.voto === "/") x += '<p class="sus">Attacco murato: se il muro avversario ha fatto punto premi PT loro (F4).</p>';
   h.innerHTML = x;
   if ($("svsetb")) $("svsetb").onclick = openSetDlg;
+  if ($("svinsend")) $("svinsend").onclick = insEnd;
 }
 function svComp() {
   const el = $("svcomp");
@@ -2953,15 +3079,38 @@ function svGrid() {
 function svLast() {
   const el = $("svlast");
   if (!LIVE) { el.innerHTML = ""; return; }
-  const from = 0;                                           // tutti, dal piu' recente; la lista scorre
-  el.innerHTML = '<div class="mut lh">Inserimenti, dal pi&ugrave; recente (' + LIVE.ev.length + ') &middot; clic: rivedi da 2 s prima</div>' +
-    LIVE.ev.slice(from).map((e, j) => [e, from + j]).reverse().map(([e, i]) => '<div class="ci" data-i="' + i + '"><span class="n">' + fmt(e.t) +
-    '</span><span class="tg">' + esc(evText(e)) + '</span><button class="sm" data-d="-1" title="Anticipa di 0,1 s">&minus;0,1</button><button class="sm" data-d="1" title="Ritarda di 0,1 s">+0,1</button></div>').join("");
+  // punteggio dopo ogni punto (noi-loro), sulla riga dell'evento che lo chiude; numero del set sulle righe d'inizio set
+  const pts = {}, setNo = {};
+  if (LRF) {
+    LRF.plist.forEach(q => { const won = q.w === LRF.side, a = (LRF.side === "loc" ? q.loc : q.osp) + (won ? 1 : 0), b = (LRF.side === "loc" ? q.osp : q.loc) + (won ? 0 : 1); pts[q.ei] = { won, s: a + "-" + b }; });
+    LRF.sets.forEach(s => { setNo[s.ev] = s.set; });
+  }
+  const row = i => {
+    const e = LIVE.ev[i], p = pts[i], on = i === SEL;
+    let h = '<div class="ci' + (on ? " on" : "") + (e.k === "set" ? " st" : "") + '" data-i="' + i + '"><span class="n">' + fmt(e.t) + '</span><span class="tg">' +
+      esc(e.k === "set" && setNo[i] ? "inizio set " + setNo[i] : evText(e)) + "</span>" +
+      (p ? '<span class="sc ' + (p.won ? "w" : "l") + '" title="' + (p.won ? "punto nostro" : "punto avversario") + '">' + p.s + "</span>" : "") +
+      '<button class="sm" data-d="-1" title="Anticipa di 0,1 s">&minus;0,1</button><button class="sm" data-d="1" title="Ritarda di 0,1 s">+0,1</button></div>';
+    if (on) h += '<div class="acts"><button class="sm" data-a="edit" title="Giocatrice, fondamentale, voto, traccia, squadra...">Modifica&hellip;</button>' +
+      '<button class="sm" data-a="now" title="L\'evento prende l\'istante a cui e\' fermo il video">All\'istante del video</button>' +
+      '<button class="sm" data-a="ins" title="I prossimi tocchi si inseriscono prima di questo evento">Inserisci prima</button>' +
+      '<button class="sm" data-a="del" title="Elimina (tasto Canc)">Elimina <kbd>Canc</kbd></button></div>';
+    return h;
+  };
+  const idx = LIVE.ev.map((e, i) => i).reverse();
+  let html = '<div class="mut lh">Inserimenti, dal pi&ugrave; recente (' + LIVE.ev.length + ') &middot; clic: seleziona e rivedi da 2 s prima, poi correggi</div>';
+  if (INS === LIVE.ev.length) html += '<div class="insm">&#9654; qui si inseriscono i nuovi tocchi</div>';
+  for (const i of idx) { html += row(i); if (INS === i) html += '<div class="insm">&#9654; qui si inseriscono i nuovi tocchi (prima della riga sopra)</div>'; }
+  el.innerHTML = html;
   el.querySelectorAll(".ci").forEach(r => {
-    const e = LIVE.ev[+r.dataset.i];
-    r.onclick = ev => { if (ev.target.closest("button")) return; seek(e.t - 2); v.play(); };
-    r.querySelectorAll("button").forEach(b => { b.onclick = () => { e.t = Math.max(0, Math.round((e.t + 0.1 * b.dataset.d) * 100) / 100); seek(e.t); v.pause(); liveChanged(); }; });
+    const i = +r.dataset.i, e = LIVE.ev[i];
+    r.onclick = ev => { if (ev.target.closest("button")) return; SEL = i; seek(e.t - 2); v.play(); svRender(); };
+    r.querySelectorAll("button[data-d]").forEach(b => { b.onclick = () => { SEL = i; evMove(i, e.t + 0.1 * b.dataset.d); }; });
   });
+  el.querySelectorAll(".acts button").forEach(b => {
+    b.onclick = () => { const a = b.dataset.a; if (a === "edit") openEvDlg(SEL); else if (a === "now") evMove(SEL, v.currentTime); else if (a === "ins") insBefore(SEL); else if (a === "del") delEv(SEL); };
+  });
+  if (selScroll) { selScroll = false; const on = el.querySelector(".ci.on"); if (on) on.scrollIntoView({ block: "nearest" }); }
 }
 function svRender() { if (!svOn) return; svHead(); svCourt(); svComp(); svGrid(); svLast(); }
 function svTick() {
@@ -3170,7 +3319,7 @@ function lsUpdate() {
 function openSetDlg() {
   if (!LIVE || !LR || LR.phase !== "setup") return;
   if ($("lsdlg").open) return;
-  const n = LR.sets.length + 1, prev = [...LIVE.ev].reverse().find(e => e.k === "set"), ros = LIVE.roster.slice().sort((a, b) => a.n - b.n);
+  const n = LR.sets.length + 1, prev = [...evView()].reverse().find(e => e.k === "set"), ros = LIVE.roster.slice().sort((a, b) => a.n - b.n);
   $("lstitle").textContent = "Set " + n + (n === 5 ? " (tie-break)" : "");
   const lu = prev ? prev.lu : [null, null, null, null, null, null], players = ros.filter(p => p.r !== "L");
   $("lszones").innerHTML = [4, 3, 2, 5, 6, 1].map(z => "<label>Zona " + z + (z === 1 ? " (batte)" : "") + ' <select data-z="' + z + '">' + rOpt(players, lu[z - 1], "—") + "</select></label>").join("");

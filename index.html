@@ -25,7 +25,7 @@ video{max-height:26vh;max-width:100%;background:#000;border-radius:6px}
 #vgrip:hover::after,#vgrip.drag::after{background:var(--acc)}
 #side{flex:1;min-width:240px}
 h1{font-size:15px;margin:0 0 6px}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}.row[hidden]{display:none}
 button{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
 button:hover{border-color:var(--acc)}
 button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
@@ -3049,7 +3049,7 @@ function openEvDlg(i) {
 function leShow() {
   const s = $("les").value;
   $("lebtr").hidden = !(s === "S" || s === "R");
-  $("letrr").hidden = !TRACK(s);
+  $("letrr").hidden = !(TRACK(s) || s === "R");
   $("lepmr").hidden = !(s === "A" || s === "P");
 }
 $("letnow").onclick = () => { $("let").value = Math.round(v.currentTime * 100) / 100; $("letf").textContent = fmt(v.currentTime); };
@@ -3063,7 +3063,12 @@ $("leok").onclick = () => {
   if (e.k === "t") {
     e.n = +$("len").value; e.s = $("les").value; e.v = $("lev").value;
     if (e.s === "S" || e.s === "R") e.bt = $("lebt").value; else delete e.bt;
-    if (!TRACK(e.s)) { delete e.z0; delete e.z1; delete e.p0; delete e.p1; delete e.pm; }
+    if (e.s === "R") {                                         // ricezione: zone della battuta avversaria (partenza di la', arrivo da noi)
+      const left = evLeftAt(leIdx), z0 = $("lez0").value, z1 = $("lez1").value;
+      if (z0 !== (e0.z0 || "")) { if (z0) { e.z0 = z0; if (e.p0) e.p0 = LV.zoneCenter(z0, !left, true); } else { delete e.z0; delete e.p0; } }
+      if (z1 !== (e0.z1 || "")) { if (z1) { e.z1 = z1; if (e.p1) e.p1 = LV.zoneCenter(z1, left); } else { delete e.z1; delete e.p1; } }
+      delete e.pm;
+    } else if (!TRACK(e.s)) { delete e.z0; delete e.z1; delete e.p0; delete e.p1; delete e.pm; }
     else {
       const left = evLeftAt(leIdx), z0 = $("lez0").value, z1 = $("lez1").value;
       // zona cambiata: il punto torna al centro della zona; zona tolta: niente punto

@@ -60,14 +60,17 @@ td.sc{white-space:nowrap}td.sc input{width:3.6em}td.sc.dup input{outline:2px sol
 .bad{color:#d33}.good{color:var(--ok)}
 dialog label{display:block;margin:4px 0}
 textarea{width:100%;font:12px/1.4 Consolas,monospace;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px}
-#cine{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 360px;background:var(--bg)}
+#cine{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) var(--cpw,360px);background:var(--bg)}
 #cine[hidden]{display:none}
 #cstage{display:flex;flex-direction:column;min-height:0;padding:10px 16px;gap:6px}
 #cvid{flex:1;min-height:0;background:#000;border-radius:6px;display:flex;position:relative}
 body.cine #vzc{bottom:0;height:100%;clip-path:none}
 body.cine #vzoom{bottom:0}
 #cvid video{width:100%;height:100%;max-height:none;object-fit:contain;cursor:pointer;border-radius:6px}
-#cpanel{border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;padding:8px}
+#cpanel{border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;padding:8px;position:relative}
+#csplit{position:absolute;left:-5px;top:0;bottom:0;width:9px;cursor:col-resize;z-index:5;touch-action:none}
+#csplit:hover,#csplit.drag{background:color-mix(in srgb,var(--acc) 35%,transparent)}
+body.cdrag{cursor:col-resize;user-select:none}body.cdrag video{pointer-events:none}
 #cpanel #scflt{gap:6px}#cpanel #scflt select{flex:1 1 45%;min-width:0}#cpanel #scflt>.mut:first-child{flex:1 0 100%}
 #clist{overflow:auto;flex:1;margin-top:6px}
 .ci{display:flex;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap}
@@ -89,7 +92,7 @@ body.cine #top,body.cine #list{display:none}
   #side{min-width:0;flex:1 1 100%}
   #vbox{width:100%}#v{width:100%}
 }
-@media (max-width:900px){#cine{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) 240px}#cpanel{border-left:0;border-top:1px solid var(--line)}}
+@media (max-width:900px){#cine{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) 240px}#cpanel{border-left:0;border-top:1px solid var(--line)}#csplit{display:none}}
 kbd{border:1px solid var(--line);border-radius:4px;padding:0 4px;background:var(--card);font-size:12px}
 /* vista Scout: video a sinistra, campetto e pulsantiera a destra */
 #sv{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 520px;background:var(--bg)}
@@ -273,6 +276,7 @@ button.on{outline:2px solid var(--acc)}
     </div>
   </div>
   <aside id="cpanel">
+    <div id="csplit" title="Trascina per cambiare la larghezza del pannello (doppio clic: larghezza di partenza)"></div>
     <div class="row"><select id="cfilter"></select><span id="ccount" class="mut"></span></div>
     <div class="row" id="ctwin" hidden>
       <label title="Secondi di video prima dell'istante del tocco">prima <input type="number" id="ctpre" min="0" max="20" step="0.5" style="width:4em"> s</label>
@@ -1887,6 +1891,22 @@ function cineTick() {
   $("ctime").textContent = sel ? fmt(clamp(t - sel.start, 0, sel.end - sel.start)) + " / " + (sel.end - sel.start).toFixed(1) + " s" : "";
   $("cplay").innerHTML = v.paused ? "&#9654;" : "&#10074;&#10074;";
 }
+// larghezza del pannello laterale della vista cinema: si trascina il bordo sinistro, il browser la ricorda
+const CPW_KEY = "volleycut:cpw", cpwSet = w => { $("cine").style.setProperty("--cpw", w ? Math.round(w) + "px" : ""); };
+try { const w = +localStorage.getItem(CPW_KEY); if (w >= 200) cpwSet(w); } catch (e) { /* larghezza di partenza */ }
+$("csplit").onpointerdown = ev => {
+  ev.preventDefault();
+  const sp = $("csplit"), right = $("cine").getBoundingClientRect().right;
+  try { sp.setPointerCapture(ev.pointerId); } catch (e) { /* senza cattura funziona finche' il puntatore resta sulla maniglia */ }
+  sp.classList.add("drag"); document.body.classList.add("cdrag");
+  let w = null;
+  sp.onpointermove = e => { w = clamp(right - e.clientX, 240, Math.max(260, window.innerWidth * 0.75)); cpwSet(w); };
+  sp.onpointerup = sp.onpointercancel = () => {
+    sp.onpointermove = sp.onpointerup = sp.onpointercancel = null; sp.classList.remove("drag"); document.body.classList.remove("cdrag");
+    if (w) try { localStorage.setItem(CPW_KEY, String(Math.round(w))); } catch (e) { /* solo per questa sessione */ }
+  };
+};
+$("csplit").ondblclick = () => { cpwSet(null); try { localStorage.removeItem(CPW_KEY); } catch (e) { /* niente */ } };
 function setCine(on) {
   if (!on && sel && sel.tch) sel = null;                       // la finestra di un tocco non e' una clip
   cine = on; document.body.classList.toggle("cine", on); $("cine").hidden = !on;

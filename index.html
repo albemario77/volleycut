@@ -83,6 +83,9 @@ body.cine #top,body.cine #list{display:none}
 #cine.tch .clipctl{display:none}
 #ctwin[hidden]{display:none}
 .ci .tl{flex:1;overflow:hidden;text-overflow:ellipsis}
+.tagrow{display:flex;flex-wrap:wrap;gap:4px;align-items:center}.tagrow[hidden]{display:none}
+.tagp{display:inline-flex;align-items:center;gap:2px;padding:1px 2px 1px 8px;border-radius:12px;background:color-mix(in srgb,var(--acc) 22%,transparent);font-size:13px}
+.tagp button{padding:0 5px;border:0;background:none;min-width:0}
 @media (max-width:900px){
   /* telefono / schermo stretto: la pagina intera scorre (il riquadro in alto e' alto quanto lo schermo e l'elenco resterebbe senza spazio) */
   body:not(.cine){height:auto;min-height:100%;overflow:auto;display:block}
@@ -240,6 +243,7 @@ button.on{outline:2px solid var(--acc)}
     <select id="fda" title="Zona di partenza del colpo (battuta, attacco, free ball): solo con lo scout .dvw" hidden></select>
     <select id="fa" title="Zona di arrivo del colpo (battuta, ricezione, attacco, free ball): solo con lo scout .dvw" hidden></select>
     <select id="fwon" title="Chi ha segnato il punto"></select>
+    <select id="fann" title="Etichette messe ai tocchi (scout fatto nella pagina)" hidden></select>
     <button class="sm" id="fclear">azzera</button>
     <span class="mut" id="fcount"></span>
     <button class="sm" id="ftag" title="Scrive nelle etichette set, punteggio e chi ha segnato">Etichetta dallo scout&hellip;</button>
@@ -273,6 +277,7 @@ button.on{outline:2px solid var(--acc)}
         <button id="cfs">Schermo intero</button>
         <button id="cback">Torna alla revisione</button>
       </div>
+      <div class="row tagrow" id="ctags" hidden></div>
     </div>
   </div>
   <aside id="cpanel">
@@ -379,6 +384,7 @@ button.on{outline:2px solid var(--acc)}
     <option value="esp">espulsione</option><option value="squ">squalifica</option><option value="rit">ritardo di gioco</option></select></label></div>
   <div class="row"><button class="pri" id="lsanok">Conferma</button><button id="lsanno">Annulla</button></div>
 </dialog>
+<datalist id="ttags"></datalist>
 <dialog id="ledlg" style="max-width:640px">
   <h2 id="letitle">Correggi</h2>
   <div class="row"><label>Istante <input type="number" id="let" step="0.1" min="0" style="width:7em"> s</label><span class="mut" id="letf"></span>
@@ -1382,7 +1388,8 @@ const ScoutLib = (function () {
         const s = e.s, n = Number(e.n), places = Rules.places(rs, s === "S" || s === "R" ? "start" : "play");
         const cod = liveCode(e);
         const t = { id: id++, tipo: s === "P" ? "Pallonetto" : DVW_SKILL[s], voto: e.v === "#" ? "++" : e.v, cognome: name(n), numero: n, posG: places[n] || "",
-          posP: "P" + Rules.rot(rs), lu: rs.lu.slice(), set, loc: score(rs).loc, osp: score(rs).osp, cod, tm: tmOf(e.t), t: e.t, ev: i };
+          posP: "P" + Rules.rot(rs), lu: rs.lu.slice(), set, loc: score(rs).loc, osp: score(rs).osp, cod, tm: tmOf(e.t), t: e.t, ev: i,
+          tags: Array.isArray(e.tags) ? e.tags.slice() : [] };
         if (e.p0 || e.p1) t.xy = [xyCode(e.p0), e.pm ? xyCode(e.pm) : "-1-1", xyCode(e.p1)];
         if (e.z0) t.da = String(e.z0);
         if (e.z1) t.a = String(e.z1);
@@ -1495,7 +1502,30 @@ const ScoutLib = (function () {
     return { us: tl[1] !== undefined ? tl[1] : d.team.replace(/^(Locali|Ospiti):\s*/, ""), home, tid: Number(tl[5]) || null,
       roster: sec.filter(f => f[1] !== "").map(f => ({ n: Number(f[1]), id: (f[8] || "").trim() || undefined, cog: (f[9] || "").trim(), nome: (f[10] || "").trim(), sop: (f[11] || "").trim(), r: f[12] === "L" ? "L" : RN[f[13]] || "" })) };
   }
-  const Live = { replay: liveReplay, scout: liveScout, header: liveHeader, code: liveCode, closes: liveCloses, roster: dvwRoster, clock: clockOf,
+  // ---- etichette sui tocchi (annotazioni dell'allenatore): stessa etichetta senza maiuscole e spazi esterni
+  const tagKey = s => String(s || "").trim().toLowerCase();
+  // riepilogo: per etichetta quante volte e a chi, rispetto ai tocchi di quel fondamentale della giocatrice
+  function tagSummary(touches) {
+    const tl = (touches || []).filter(t => t.numero !== null && t.numero !== undefined), out = new Map();
+    const of = (t) => tl.filter(x => x.numero === t.numero && x.tipo === t.tipo).length;
+    for (const t of tl) for (const raw of new Map((t.tags || []).map(x => [tagKey(x), x.trim()])).entries()) {
+      const [k, label] = raw;
+      if (!k) continue;
+      const g = out.get(k) || (out.set(k, { tag: label, n: 0, by: new Map() }), out.get(k));
+      g.n++;
+      const bk = t.numero + "|" + t.tipo, b = g.by.get(bk) || (g.by.set(bk, { cognome: t.cognome, numero: t.numero, tipo: t.tipo, n: 0, of: of(t) }), g.by.get(bk));
+      b.n++;
+    }
+    return [...out.values()].map(g => ({ tag: g.tag, n: g.n, by: [...g.by.values()].sort((a, b) => b.n - a.n) })).sort((a, b) => b.n - a.n);
+  }
+  // file compagno del .dvw per Volley Coach: tutti i tocchi con giocatrice, nell'ordine delle righe del .dvw, con istante ed etichette
+  function companion(doc) {
+    const R = liveReplay(doc), ours = R.side === "loc";
+    return { v: 1, partita: { data: doc.date || "", avversario: String(doc.them || "").trim(), squadra: String(doc.us || "").trim(), casa: doc.home !== false },
+      tocchi: R.touchList.filter(t => t.numero !== null && t.numero !== undefined).map((t, i) => ({ i, set: t.set, punti: ours ? [t.loc, t.osp] : [t.osp, t.loc],
+        n: t.numero, cognome: t.cognome, fond: t.tipo, voto: t.voto, t: t.t, tags: (t.tags || []).map(x => x.trim()).filter(Boolean) })) };
+  }
+  const Live = { replay: liveReplay, tagKey, tagSummary, companion, scout: liveScout, header: liveHeader, code: liveCode, closes: liveCloses, roster: dvwRoster, clock: clockOf,
     zoneAt, zoneCenter, GEO, SAN: LIVE_SAN };
 
   return { readXlsx, parseScout, buildPoints, fromTouches, loadScout, loadScoutFile, parseDvw, fromDvw, loadDvw, toDvw, dvwBytes, dvDetails, dvEval, dvFilterOptions, dvFixed, dvShown, dvMatch, ended, target,
@@ -1788,7 +1818,7 @@ function tchPass(t, p) {
   if (FLT.won && FLT.won !== "err" && p.winner !== FLT.won) return false;
   if (FLT.rot && (t.posP || p.rot) !== FLT.rot) return false;
   return (!FLT.player || t.cognome + "|" + t.numero === FLT.player) && (!FLT.skill || t.tipo === FLT.skill) && (!FLT.grade || t.voto === FLT.grade) &&
-    (!FLT.pos || t.posG === FLT.pos) && (!FLT.det || ScoutLib.dvMatch(t, FLT.det, TS().dv)) && (!FLT.da || t.da === FLT.da) && (!FLT.a || t.a === FLT.a);
+    (!FLT.pos || t.posG === FLT.pos) && (!FLT.det || ScoutLib.dvMatch(t, FLT.det, TS().dv)) && (!FLT.da || t.da === FLT.da) && (!FLT.a || t.a === FLT.a) && tagPass(t);
 }
 let tchCache = { key: "", list: [] };
 function tchList() {
@@ -1874,6 +1904,7 @@ function syncBar() {
   if (document.activeElement !== $("ctag")) $("ctag").value = sel ? sel.tag || "" : "";
   $("ctch").hidden = !(SCOUT && sel && sel.sp && SCOUT.points[sel.sp - 1]);
   $("ckeep").checked = !!(sel && sel.keep); $("csel").checked = !!(sel && sel.sel);
+  ctagsSync();
 }
 function playClip(r) { sel = r; seek(r.start); v.play(); renderCine(); if (!r.tch) renderRows(); }
 function stepClip(d) {
@@ -1963,6 +1994,16 @@ function matchReport() {
     (m.suspects.size ? '<p class="sus">&#9888; ' + m.suspects.size + " clip con durata e tocchi poco coerenti (segnate con &#9888; nella tabella).</p>" : "") +
     '<p class="mut">Nella tabella: &#9650; punto dei locali, &#9660; punto degli ospiti. Sposta o correggi un abbinamento col numero nella colonna Scout o con i pulsanti della barra.</p>';
 }
+// riepilogo delle etichette dei tocchi: per etichetta quante volte e a chi (n su tocchi di quel fondamentale); clic = filtro
+function tagReport() {
+  const ts = TS(), sum = ts ? ScoutLib.Live.tagSummary(ts.points.flatMap(p => p.touches)) : [];
+  if (!sum.length) return "";
+  const k = g => esc(ScoutLib.Live.tagKey(g.tag));
+  return '<h3>Etichette dei tocchi</h3><p class="mut">Clic su una riga: rivedi quei tocchi (filtro).</p><table class="stab"><tr><th>Etichetta</th><th>Volte</th><th>Giocatrice</th><th>Su tocchi di quel fondamentale</th></tr>' +
+    sum.map(g => '<tr data-tag="' + k(g) + '" style="cursor:pointer"><td><b>' + esc(g.tag) + "</b></td><td>" + g.n + "</td><td></td><td></td></tr>" +
+      g.by.map(b => '<tr data-tag="' + k(g) + '" data-pl="' + esc(b.cognome + "|" + b.numero) + '" data-sk="' + esc(b.tipo) + '" style="cursor:pointer"><td></td><td>' + b.n +
+        "</td><td>" + esc(b.cognome) + " #" + b.numero + "</td><td>" + b.n + " su " + b.of + " (" + esc(b.tipo.toLowerCase()) + ")</td></tr>").join("")).join("") + "</table>";
+}
 function showScout() {
   const s = SCOUT, errs = s.issues.filter(i => i.level === "err"), warns = s.issues.filter(i => i.level !== "err");
   const rows = s.sets.map(x => "<tr><td>" + x.set + "</td><td>" + x.points + "</td><td>" + (x.final ? x.final[0] + "-" + x.final[1] : "?") +
@@ -1972,7 +2013,11 @@ function showScout() {
     s.setsWon[0] + "-" + s.setsWon[1] + " (locali-ospiti).</p>" +
     '<table class="stab"><tr><th>Set</th><th>Punti</th><th>Finale</th><th>Vince</th><th title="Rally senza tocchi della nostra squadra: errore generico o punto generico dell\'avversario">Senza righe</th></tr>' + rows + "</table>" +
     (errs.length ? '<p class="bad"><b>Da correggere:</b></p><ul>' + errs.map(i => "<li>" + esc(i.msg) + "</li>").join("") + "</ul>" : '<p class="good">Controlli superati: i set rispettano le regole di fine set.</p>') +
-    (warns.length ? "<p><b>Da controllare:</b></p><ul>" + warns.map(i => "<li>" + esc(i.msg) + "</li>").join("") + "</ul>" : "") + matchReport();
+    (warns.length ? "<p><b>Da controllare:</b></p><ul>" + warns.map(i => "<li>" + esc(i.msg) + "</li>").join("") + "</ul>" : "") + matchReport() + tagReport();
+  $("sbody").querySelectorAll("tr[data-tag]").forEach(tr => { tr.onclick = () => {
+    Object.assign(FLT, { tag: tr.dataset.tag, player: tr.dataset.pl || "", skill: tr.dataset.sk || "" });
+    $("sdlg").close(); fltFor = null; changed();
+  }; });
   $("sexp").hidden = !(s.dv && s.dv.x);
   $("sdlg").showModal();
 }
@@ -2100,7 +2145,9 @@ function scoutBar() {
 
 // ---- tabella
 // ---- filtri per scout (valgono per tabella, vista cinema e pulsanti di selezione)
-const FLT = { set: "", player: "", skill: "", grade: "", pos: "", rot: "", det: "", da: "", a: "", won: "" };
+const FLT = { set: "", player: "", skill: "", grade: "", pos: "", rot: "", det: "", da: "", a: "", won: "", tag: "" };
+// etichetta del tocco: "" qualsiasi, "*" almeno una, altrimenti la chiave (ScoutLib.Live.tagKey)
+const tagPass = t => !FLT.tag || (FLT.tag === "*" ? !!(t.tags && t.tags.length) : (t.tags || []).some(x => ScoutLib.Live.tagKey(x) === FLT.tag));
 const fltOn = () => Object.values(FLT).some(Boolean);
 function passScout(r) {
   if (!SCOUT || !fltOn()) return true;
@@ -2109,8 +2156,8 @@ function passScout(r) {
   if (FLT.set && String(p.set) !== FLT.set) return false;
   if (FLT.won === "err" ? !p.missing : FLT.won && p.winner !== FLT.won) return false;
   if (FLT.rot && !(p.rot ? p.rot === FLT.rot : p.touches.some(t => t.posP === FLT.rot))) return false;   // la rotazione e' la stessa per tutto il punto
-  if (FLT.player || FLT.skill || FLT.grade || FLT.pos || FLT.det || FLT.da || FLT.a) {
-    return p.touches.some(t => (!FLT.player || t.cognome + "|" + t.numero === FLT.player) && (!FLT.skill || t.tipo === FLT.skill) &&
+  if (FLT.player || FLT.skill || FLT.grade || FLT.pos || FLT.det || FLT.da || FLT.a || FLT.tag) {
+    return p.touches.some(t => tagPass(t) && (!FLT.player || t.cognome + "|" + t.numero === FLT.player) && (!FLT.skill || t.tipo === FLT.skill) &&
       (!FLT.grade || t.voto === FLT.grade) && (!FLT.pos || t.posG === FLT.pos) && (!FLT.det || ScoutLib.dvMatch(t, FLT.det, SCOUT.dv)) && (!FLT.da || t.da === FLT.da) && (!FLT.a || t.a === FLT.a));
   }
   return true;
@@ -2140,6 +2187,9 @@ function fillFilters() {
   opts("fdet", "ogni dettaglio", dets);
   $("fdet").hidden = !dets.length;
   $("fda").hidden = !zones("da").length; $("fa").hidden = !zones("a").length;
+  const tg = new Map(), ts = TS(); (ts ? ts.points.flatMap(p => p.touches) : tc).forEach(t => (t.tags || []).forEach(x => { const k = ScoutLib.Live.tagKey(x); if (k && !tg.has(k)) tg.set(k, x.trim()); }));
+  opts("fann", "ogni etichetta", tg.size ? [["*", "con qualche etichetta"]].concat([...tg].sort((a, b) => a[1].localeCompare(b[1], "it"))) : []);
+  $("fann").hidden = !tg.size;
   opts("fwon", "chiunque segni", [["loc", "segnano i locali"], ["osp", "segnano gli ospiti"], ["err", "errore avversario"]]);
 }
 function applyFilters() {
@@ -2147,7 +2197,7 @@ function applyFilters() {
   const n = R.filter(r => isVisible(r)).length;
   $("fcount").textContent = fltOn() ? n + " clip corrispondono" : "";
 }
-["fset", "fplayer", "fskill", "fgrade", "fpos", "frot", "fdet", "fda", "fa", "fwon"].forEach(id => { $(id).dataset.k = { fset: "set", fplayer: "player", fskill: "skill", fgrade: "grade", fpos: "pos", frot: "rot", fdet: "det", fda: "da", fa: "a", fwon: "won" }[id];
+["fset", "fplayer", "fskill", "fgrade", "fpos", "frot", "fdet", "fda", "fa", "fwon", "fann"].forEach(id => { $(id).dataset.k = { fset: "set", fplayer: "player", fskill: "skill", fgrade: "grade", fpos: "pos", frot: "rot", fdet: "det", fda: "da", fa: "a", fwon: "won", fann: "tag" }[id];
   $(id).onchange = e => { FLT[e.target.dataset.k] = e.target.value; applyFilters(); }; });
 $("fclear").onclick = () => { Object.keys(FLT).forEach(k => { FLT[k] = ""; }); fillFilters(); applyFilters(); };
 
@@ -2200,10 +2250,11 @@ function showTouches(r, anchor) {
   if (dvw && !SCOUT.dvFixed) SCOUT.dvFixed = ScoutLib.dvFixed(SCOUT.touchList, SCOUT.dv);   // dettagli uguali per tutti: non si mostrano
   const fixed = SCOUT.dvFixed;
   const zn = p.touches.some(t => t.da || t.a);              // zone di partenza e arrivo: solo con lo scout .dvw
+  const tg = p.touches.some(t => t.tags && t.tags.length);   // etichette: solo scout fatto nella pagina
   const rows = p.touches.map((t, i) => "<tr><td>" + (i + 1) + "</td><td>" + esc(t.tipo) + "</td><td" + (ScoutLib.dvEval(t) ? ' title="' + esc(ScoutLib.dvEval(t)) + '"' : "") + ">" + esc(t.voto) + "</td><td>" + esc(t.cognome) +
     (t.numero !== null && t.numero !== undefined ? " (" + esc(t.numero) + ")" : "") + "</td><td>" + esc(t.posG) + "</td><td>" + esc(t.posP) + "</td>" +
     (zn ? "<td>" + (t.da || t.a ? esc(t.da || "?") + " &rarr; " + esc(t.a || "?") : "") + "</td>" : "") +
-    (dvw ? "<td>" + esc(ScoutLib.dvShown(t, SCOUT.dv, fixed).map(d => d.l).join(", ")) + "</td>" : "") + "</tr>").join("");
+    (dvw ? "<td>" + esc(ScoutLib.dvShown(t, SCOUT.dv, fixed).map(d => d.l).join(", ")) + "</td>" : "") + (tg ? "<td>" + esc((t.tags || []).join(", ")) + "</td>" : "") + "</tr>").join("");
   const gen = p.gen ? (p.gen[1] === "=" ? "errore generico " : "punto generico ") + (p.gen[0] === "loc" ? "dei locali" : "degli ospiti") : "";
   const lu = p.lineup ? '<p class="mut">In campo' + (p.rot ? " (palleggiatore in " + esc(p.rot) + ")" : "") + ": " +
     p.lineup.map((n, i) => "P" + (i + 1) + " " + (n === null ? "?" : "#" + n)).join(" &middot; ") + "</p>" : "";
@@ -2211,7 +2262,7 @@ function showTouches(r, anchor) {
   $("tchbody").innerHTML = '<p class="mut">Clip ' + idx + " &middot; " + fmt(r.start) + " &ndash; " + fmt(r.end) + " (" + (r.end - r.start).toFixed(1) + " s)</p>" +
     "<p><b>" + ScoutLib.pointLabel(p) + "</b>" + (p.winner ? " &middot; punto " + (p.winner === "loc" ? "dei locali" : "degli ospiti") : "") + "</p>" +
     (p.missing ? '<p class="mut">Nessun tocco della nostra squadra: ' + (p.winner && p.winner !== SCOUT.side ? "punto generico dell'avversario (per esempio un ace)." : "errore generico dell'avversario.") + "</p>"
-      : '<table class="stab"><tr><th>#</th><th>Tocco</th><th>Voto</th><th>Giocatore</th><th>Pos.</th><th>Rot.</th>' + (zn ? '<th title="Zona di partenza e zona di arrivo del colpo">Zone</th>' : "") + (dvw ? '<th title="Tipo di battuta o di palla, tipo di colpo, muro, codici speciali: come sono scritti nello scout .dvw">Dettagli</th>' : "") + "</tr>" + rows + "</table>" +
+      : '<table class="stab"><tr><th>#</th><th>Tocco</th><th>Voto</th><th>Giocatore</th><th>Pos.</th><th>Rot.</th>' + (zn ? '<th title="Zona di partenza e zona di arrivo del colpo">Zone</th>' : "") + (dvw ? '<th title="Tipo di battuta o di palla, tipo di colpo, muro, codici speciali: come sono scritti nello scout .dvw">Dettagli</th>' : "") + (tg ? "<th>Etichette</th>" : "") + "</tr>" + rows + "</table>" +
         (gen ? '<p class="mut">Il punto si chiude con: ' + gen + ".</p>" : "")) +
     (p.events ? '<p class="mut">Prima di questo punto: ' + esc(p.events.join("; ")) + ".</p>" : "") + lu;
   const d = $("tchdlg");
@@ -2712,7 +2763,7 @@ const LV = ScoutLib.Live, RU = ScoutLib.Rules;
 let LIVE = null, LR = null, svOn = false, C = null;      // C = tocco in composizione
 // correzione: SEL = evento selezionato nell'elenco; INS = posizione in cui si inseriscono i nuovi eventi (null = in coda).
 // Durante l'inserimento LR e' il rigioco fino a INS (campo, battuta e punteggio di quel momento), LRF quello di tutto.
-let SEL = null, INS = null, LRF = null, selScroll = false;
+let SEL = null, INS = null, LRF = null, selScroll = false, svTagOpen = null;   // svTagOpen: riga con le etichette aperte
 const evView = () => (!LIVE ? [] : INS === null ? LIVE.ev : LIVE.ev.slice(0, INS));
 const VOTES = ["#", "+", "!", "-", "/", "="], VL = x => (x === "#" ? "++" : x);
 const SKN = { S: "Battuta", R: "Ricezione", A: "Attacco", P: "Pallonetto", F: "Free ball", D: "Difesa", E: "Alzata", B: "Muro" };
@@ -2779,6 +2830,45 @@ function addEv(e) {
   LIVE.ev.push(e); C = null; liveChanged();
   if (LR.plist.length > before) afterPoint(e);
 }
+// ---- etichette sui tocchi (annotazioni): sull'evento del tocco, `tags`
+function allTags() {
+  const m = new Map();
+  for (const e of LIVE ? LIVE.ev : []) for (const t of e.tags || []) { const k = LV.tagKey(t); if (k && !m.has(k)) m.set(k, t.trim()); }
+  return [...m.values()].sort((a, b) => a.localeCompare(b, "it"));
+}
+function setTags(i, tags, after) {
+  const e = LIVE && LIVE.ev[i]; if (!e) return;
+  if (tags.length) e.tags = tags; else delete e.tags;
+  liveChanged(); if (after) after();
+}
+// pillole con x per togliere, campo con l'elenco delle etichette gia' usate per aggiungere (Invio o scelta dall'elenco)
+function tagEditor(i, el, after) {
+  const e = LIVE.ev[i], tags = (e.tags || []).slice();
+  $("ttags").innerHTML = allTags().map(t => '<option value="' + esc(t) + '">').join("");
+  el.innerHTML = '<span class="mut">Etichette</span>' + tags.map((t, j) => '<span class="tagp">' + esc(t) + '<button class="sm" data-j="' + j + '" title="Togli">&times;</button></span>').join("") +
+    '<input type="text" list="ttags" placeholder="aggiungi&hellip;" style="width:13em" title="Scrivi o scegli una etichetta, poi Invio">';
+  el.querySelectorAll("button[data-j]").forEach(b => { b.onclick = ev => { ev.stopPropagation(); setTags(i, tags.filter((x, j) => j !== +b.dataset.j), after); }; });
+  const inp = el.querySelector("input");
+  const add = () => {
+    const x = inp.value.trim(); inp.value = "";
+    if (!x || tags.some(y => LV.tagKey(y) === LV.tagKey(x))) return;
+    setTags(i, tags.concat([x]), () => { if (after) after(); const n = el.querySelector("input"); if (n) n.focus(); });
+  };
+  inp.onkeydown = ev => { ev.stopPropagation(); if (ev.key === "Enter") { ev.preventDefault(); add(); } else if (ev.key === "Escape") inp.blur(); };
+  inp.onchange = add;
+  inp.onclick = ev => ev.stopPropagation();
+}
+// vista cinema: etichette del tocco selezionato (si ridisegna solo se cambia tocco o etichette)
+function ctagsSync() {
+  const el = $("ctags"), i = tchMode() && sel && sel.tch && LIVE && LIVE.ev[sel.tch.ev] ? sel.tch.ev : null;
+  el.hidden = i === null;
+  if (i === null) { el.dataset.k = ""; return; }
+  const k = i + "|" + JSON.stringify(LIVE.ev[i].tags || []);
+  if (el.dataset.k === k || el.contains(document.activeElement) && document.activeElement.value) return;
+  el.dataset.k = k;
+  tagEditor(i, el, () => { sel = tchList().find(w => w.tch.ev === i) || sel; renderCine(); });
+}
+
 // ---- correzione di eventi gia' inseriti
 function selEv(i) { SEL = i; selScroll = true; svRender(); }
 function delEv(i) {
@@ -3124,13 +3214,15 @@ function svLast() {
   const row = i => {
     const e = LIVE.ev[i], p = pts[i], on = i === SEL;
     let h = '<div class="ci' + (on ? " on" : "") + (e.k === "set" ? " st" : "") + '" data-i="' + i + '"><span class="n">' + fmt(e.t) + '</span><span class="tg">' +
-      esc(e.k === "set" && setNo[i] ? "inizio set " + setNo[i] : evText(e)) + "</span>" +
+      esc(e.k === "set" && setNo[i] ? "inizio set " + setNo[i] : evText(e)) + (e.tags && e.tags.length ? " · " + e.tags.join(", ") : "") + "</span>" +
       (p ? '<span class="sc ' + (p.won ? "w" : "l") + '" title="' + (p.won ? "punto nostro" : "punto avversario") + '">' + p.s + "</span>" : "") +
       '<button class="sm" data-d="-1" title="Anticipa di 0,1 s">&minus;0,1</button><button class="sm" data-d="1" title="Ritarda di 0,1 s">+0,1</button></div>';
     if (on) h += '<div class="acts"><button class="sm" data-a="edit" title="Giocatrice, fondamentale, voto, traccia, squadra...">Modifica&hellip;</button>' +
       '<button class="sm" data-a="now" title="L\'evento prende l\'istante a cui e\' fermo il video">All\'istante del video</button>' +
       '<button class="sm" data-a="ins" title="I prossimi tocchi si inseriscono prima di questo evento">Inserisci prima</button>' +
-      '<button class="sm" data-a="del" title="Elimina (tasto Canc)">Elimina <kbd>Canc</kbd></button></div>';
+      '<button class="sm" data-a="del" title="Elimina (tasto Canc)">Elimina <kbd>Canc</kbd></button>' +
+      (e.k === "t" ? '<button class="sm" data-a="tags" title="Annotazioni sul tocco, per vedere se si ripetono">Etichette&hellip;</button>' : "") +
+      (e.k === "t" && svTagOpen === i ? '<div class="tagrow" id="svtags" style="flex-basis:100%"></div>' : "") + "</div>";
     return h;
   };
   const idx = LIVE.ev.map((e, i) => i).reverse();
@@ -3140,12 +3232,13 @@ function svLast() {
   el.innerHTML = html;
   el.querySelectorAll(".ci").forEach(r => {
     const i = +r.dataset.i, e = LIVE.ev[i];
-    r.onclick = ev => { if (ev.target.closest("button")) return; SEL = i; seek(e.t - 2); v.play(); svRender(); };
+    r.onclick = ev => { if (ev.target.closest("button")) return; if (SEL !== i) svTagOpen = null; SEL = i; seek(e.t - 2); v.play(); svRender(); };
     r.querySelectorAll("button[data-d]").forEach(b => { b.onclick = () => { SEL = i; evMove(i, e.t + 0.1 * b.dataset.d); }; });
   });
   el.querySelectorAll(".acts button").forEach(b => {
-    b.onclick = () => { const a = b.dataset.a; if (a === "edit") openEvDlg(SEL); else if (a === "now") evMove(SEL, v.currentTime); else if (a === "ins") insBefore(SEL); else if (a === "del") delEv(SEL); };
+    b.onclick = () => { const a = b.dataset.a; if (a === "edit") openEvDlg(SEL); else if (a === "now") evMove(SEL, v.currentTime); else if (a === "ins") insBefore(SEL); else if (a === "del") delEv(SEL); else if (a === "tags") { svTagOpen = svTagOpen === SEL ? null : SEL; svRender(); const n = $("svtags"); if (n) n.querySelector("input").focus(); } };
   });
+  if ($("svtags")) tagEditor(SEL, $("svtags"), () => { svRender(); const n = $("svtags"); if (n) n.querySelector("input").focus(); });
   if (selScroll) { selScroll = false; const on = el.querySelector(".ci.on"); if (on) on.scrollIntoView({ block: "nearest" }); }
 }
 function svRender() { if (!svOn) return; svHead(); svCourt(); svComp(); svGrid(); svLast(); }
@@ -3184,8 +3277,14 @@ $("svexp").onclick = () => {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([ScoutLib.dvwBytes(text)], { type: "application/octet-stream" }));
   // come i file di Volleyball Scout: il nome del file e' quello dell'avversario (VS lo usa come nome della partita)
-  a.download = ((LIVE.them || "").trim() || ("scout " + (LIVE.date || "")).trim()).replace(/[\\/:*?"<>|]+/g, "_") + ".dvw"; a.click();
+  const base = ((LIVE.them || "").trim() || ("scout " + (LIVE.date || "")).trim()).replace(/[\\/:*?"<>|]+/g, "_");
+  a.download = base + ".dvw"; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  // file compagno per Volley Coach: istante del video ed etichette di ogni tocco, nell'ordine delle righe del .dvw
+  const b = document.createElement("a");
+  b.href = URL.createObjectURL(new Blob([JSON.stringify(LV.companion(LIVE), null, 1)], { type: "application/json" }));
+  b.download = base + ".volleycut.json"; b.click();
+  setTimeout(() => URL.revokeObjectURL(b.href), 5000);
 };
 
 // ---- partita e rosa

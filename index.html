@@ -1444,6 +1444,9 @@ const ScoutLib = (function () {
     const gen = k => [k + "-DAY: " + date + " " + time, k + "-IDP: DVW", k + "-PRG: Volleyball Scout", k + "-REL:", k + "-VER:", k + "-NAM:"];
     const us = doc.us || "", won = R.setsWon[R.side === "loc" ? 0 : 1];
     const ours = (home ? "1" : "2") + ";" + us + ";" + won + ";;;" + parseInt(hashId(us).slice(0, 6), 16) + ";" + HX(us) + ";\u000f2;\u000f2;";
+    // avversario: nei file di VS la riga e' vuota, ma allora VS intitola la partita con la nostra squadra
+    const them = String(doc.them || "").trim(), lost = R.setsWon[R.side === "loc" ? 1 : 0];
+    const theirs = them ? (home ? "2" : "1") + ";" + them + ";" + lost + ";;;" + parseInt(hashId(them).slice(0, 6), 16) + ";" + HX(them) + ";\u000f2;\u000f2;" : ";;;;;;;;;";
     const players = (doc.roster || []).map((p, i) => {
       const cols = [1, 2, 3, 4, 5].map(s => ((R.played[s] || {})[p.n] || ""));
       const idp = hashId((p.cog || "") + "|" + (p.nome || "") + "|" + p.n), cog = String(p.cog || "").toUpperCase();
@@ -1453,7 +1456,7 @@ const ScoutLib = (function () {
     return {
       "3DATAVOLLEYSCOUT": ["FILEFORMAT: 2.0"].concat(gen("GENERATOR"), gen("LASTCHANGE")),
       "3MATCH": [date + ";" + time + ";;;;;1;;1252;1;Z;0;\u000f2;\u000f2;;", ";;" + serial + ";;;;;;;;;;"],
-      "3TEAMS": home ? [ours, ";;;;;;;;;"] : [";;;;;;;;;", ours],
+      "3TEAMS": home ? [ours, theirs] : [theirs, ours],
       "3MORE": [";;;;;;\u000f2;\u000f2;\u000f2;\u000f2;", ";0;0;"], "3COMMENTS": [], "3SET": [],
       "3PLAYERS-H": home ? players : [], "3PLAYERS-V": home ? [] : players,
       "3ATTACKCOMBINATION": [], "3SETTERCALL": [], "3WINNINGSYMBOLS": ["=~~~#~~~=~~~~~~~=/~~#~~~=/~~#~~~=~~~~~~~=~~~~~~~=~~~~~~~"],

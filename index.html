@@ -3217,7 +3217,7 @@ function svLast() {
       esc(e.k === "set" && setNo[i] ? "inizio set " + setNo[i] : evText(e)) + (e.tags && e.tags.length ? " · " + e.tags.join(", ") : "") + "</span>" +
       (p ? '<span class="sc ' + (p.won ? "w" : "l") + '" title="' + (p.won ? "punto nostro" : "punto avversario") + '">' + p.s + "</span>" : "") +
       '<button class="sm" data-d="-1" title="Anticipa di 0,1 s">&minus;0,1</button><button class="sm" data-d="1" title="Ritarda di 0,1 s">+0,1</button></div>';
-    if (on) h += '<div class="acts"><button class="sm" data-a="edit" title="Giocatrice, fondamentale, voto, traccia, squadra...">Modifica&hellip;</button>' +
+    if (on) h += '<div class="acts"><button class="sm" data-a="edit" title="' + (e.k === "set" ? "Formazione, palleggiatrice, libero, chi batte, lato del campo" : "Giocatrice, fondamentale, voto, traccia, squadra...") + '">Modifica&hellip;</button>' +
       '<button class="sm" data-a="now" title="L\'evento prende l\'istante a cui e\' fermo il video">All\'istante del video</button>' +
       '<button class="sm" data-a="ins" title="I prossimi tocchi si inseriscono prima di questo evento">Inserisci prima</button>' +
       '<button class="sm" data-a="del" title="Elimina (tasto Canc)">Elimina <kbd>Canc</kbd></button>' +
@@ -3236,7 +3236,7 @@ function svLast() {
     r.querySelectorAll("button[data-d]").forEach(b => { b.onclick = () => { SEL = i; evMove(i, e.t + 0.1 * b.dataset.d); }; });
   });
   el.querySelectorAll(".acts button").forEach(b => {
-    b.onclick = () => { const a = b.dataset.a; if (a === "edit") openEvDlg(SEL); else if (a === "now") evMove(SEL, v.currentTime); else if (a === "ins") insBefore(SEL); else if (a === "del") delEv(SEL); else if (a === "tags") { svTagOpen = svTagOpen === SEL ? null : SEL; svRender(); const n = $("svtags"); if (n) n.querySelector("input").focus(); } };
+    b.onclick = () => { const a = b.dataset.a; if (a === "edit") { if (LIVE.ev[SEL].k === "set") openSetDlg(SEL); else openEvDlg(SEL); } else if (a === "now") evMove(SEL, v.currentTime); else if (a === "ins") insBefore(SEL); else if (a === "del") delEv(SEL); else if (a === "tags") { svTagOpen = svTagOpen === SEL ? null : SEL; svRender(); const n = $("svtags"); if (n) n.querySelector("input").focus(); } };
   });
   if ($("svtags")) tagEditor(SEL, $("svtags"), () => { svRender(); const n = $("svtags"); if (n) n.querySelector("input").focus(); });
   if (selScroll) { selScroll = false; const on = el.querySelector(".ci.on"); if (on) on.scrollIntoView({ block: "nearest" }); }
@@ -3475,10 +3475,16 @@ function lsUpdate() {
   $("lsp1").innerHTML = rOpt(inLu, a, "—"); $("lsp2").innerHTML = rOpt(inLu, b, "—");
   $("lspair").textContent = prop.length ? "(proposta: #" + prop[0] + " e #" + prop[1] + ", le centrali con la palleggiatrice in P1)" : "";
 }
-function openSetDlg() {
-  if (!LIVE || !LR || LR.phase !== "setup") return;
+// edit = indice di una riga "inizio set" gia' inserita: la finestra si apre con i suoi valori e OK la sostituisce
+// (tutto cio' che segue si ricalcola); senza edit si imposta il set successivo
+let lsEdit = null;
+function openSetDlg(edit) {
+  const ed = Number.isInteger(edit) && LIVE && LIVE.ev[edit] && LIVE.ev[edit].k === "set" ? edit : null;
+  if (!LIVE || !LR || (ed === null && LR.phase !== "setup")) return;
   if ($("lsdlg").open) return;
-  const n = LR.sets.length + 1, prev = [...evView()].reverse().find(e => e.k === "set"), ros = LIVE.roster.slice().sort((a, b) => a.n - b.n);
+  lsEdit = ed;
+  const n = ed !== null ? LIVE.ev.slice(0, ed + 1).filter(e => e.k === "set").length : LR.sets.length + 1;
+  const prev = ed !== null ? LIVE.ev[ed] : [...evView()].reverse().find(e => e.k === "set"), ros = LIVE.roster.slice().sort((a, b) => a.n - b.n);
   $("lstitle").textContent = "Set " + n + (n === 5 ? " (tie-break)" : "");
   const lu = prev ? prev.lu : [null, null, null, null, null, null], players = ros.filter(p => p.r !== "L");
   $("lszones").innerHTML = [4, 3, 2, 5, 6, 1].map(z => "<label>Zona " + z + (z === 1 ? " (batte)" : "") + ' <select data-z="' + z + '">' + rOpt(players, lu[z - 1], "—") + "</select></label>").join("");
@@ -3489,10 +3495,11 @@ function openSetDlg() {
   lsPairSet = !!(prev && prev.pair && prev.pair.length);
   $("lsp1").innerHTML = rOpt(ros, prev && prev.pair ? prev.pair[0] : null, "—"); $("lsp2").innerHTML = rOpt(ros, prev && prev.pair ? prev.pair[1] : null, "—");
   // chi batte: nei set 2-4 l'altra squadra rispetto al set prima; lato: l'opposto del set prima
-  document.querySelectorAll("input[name=lsserve]").forEach(r => { r.checked = !!prev && n < 5 && r.value === (prev.serve ? "0" : "1"); });
-  const left = prev ? !(prev.left !== false) : true;
+  document.querySelectorAll("input[name=lsserve]").forEach(r => { r.checked = ed !== null ? r.value === (prev.serve ? "1" : "0") : !!prev && n < 5 && r.value === (prev.serve ? "0" : "1"); });
+  const left = ed !== null ? prev.left !== false : prev ? !(prev.left !== false) : true;
   document.querySelectorAll("input[name=lsside]").forEach(r => { r.checked = r.value === (left ? "L" : "R"); });
   $("lserr").textContent = "";
+  $("lsok").textContent = ed !== null ? "Salva la correzione" : "Inizia il set";
   lsUpdate();
   $("lsdlg").showModal();
 }
@@ -3500,7 +3507,7 @@ $("lszones").onchange = () => lsUpdate();
 $("lslib").onchange = $("lslib2").onchange = () => lsUpdate();
 $("lsset").onchange = () => { lsPairSet = false; lsUpdate(); };
 $("lsp1").onchange = $("lsp2").onchange = () => { lsPairSet = true; };
-$("lsno").onclick = () => $("lsdlg").close();
+$("lsno").onclick = () => { lsEdit = null; $("lsdlg").close(); };
 $("lsok").onclick = () => {
   const lu = lsLu(), setter = +$("lsset").value || null, lib = +$("lslib").value || null, lib2 = +$("lslib2").value || null;
   const pair = [+$("lsp1").value, +$("lsp2").value].filter(Boolean), sv = document.querySelector("input[name=lsserve]:checked"), sd = document.querySelector("input[name=lsside]:checked");
@@ -3509,7 +3516,10 @@ $("lsok").onclick = () => {
     lib && (pair.length !== 2 || pair[0] === pair[1]) ? "Scegli le due giocatrici con cui si cambia il libero." : !sv ? "Indica chi batte per primo." : "";
   if (err) { $("lserr").textContent = err; return; }
   $("lsdlg").close();
-  addEv({ k: "set", t: Math.round(v.currentTime * 100) / 100, lu, setter, serve: sv.value === "1", lib, lib2: lib2 && lib2 !== lib ? lib2 : null, pair: lib ? pair : RU.pair(lu, setter), left: sd.value === "L" });
+  const ev = { k: "set", t: Math.round(v.currentTime * 100) / 100, lu, setter, serve: sv.value === "1", lib, lib2: lib2 && lib2 !== lib ? lib2 : null, pair: lib ? pair : RU.pair(lu, setter), left: sd.value === "L" };
+  if (lsEdit !== null && LIVE.ev[lsEdit] && LIVE.ev[lsEdit].k === "set") { ev.t = LIVE.ev[lsEdit].t; LIVE.ev[lsEdit] = ev; SEL = lsEdit; lsEdit = null; liveChanged(); return; }
+  lsEdit = null;
+  addEv(ev);
 };
 
 // ---- cambio e provvedimento

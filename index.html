@@ -307,6 +307,7 @@ button.on{outline:2px solid var(--acc)}
     <div class="row">
       <button id="svmatch">Partita e rosa&hellip;</button>
       <button id="svexp" title="Scarica lo scout in un file .dvw da importare in Volleyball Scout">Esporta .dvw</button>
+      <button id="svstamp" hidden title="Assegna a ogni tocco convertito da VS il suo istante nel video: Invio a ogni tocco">Timbra gli istanti</button>
       <details class="mut"><summary>Tasti</summary>
         Numero di maglia, poi la lettera: <kbd>B</kbd> battuta <kbd>R</kbd> ricezione <kbd>A</kbd> attacco <kbd>S</kbd> pallonetto <kbd>F</kbd> free ball
         <kbd>D</kbd> difesa <kbd>E</kbd> alzata <kbd>W</kbd> muro (per chi batte la lettera si puo' saltare). Battuta, attacco, pallonetto, free ball: zona di partenza e
@@ -353,6 +354,8 @@ button.on{outline:2px solid var(--acc)}
     <button class="sm" id="lmrose" title="Il file con le rose delle squadre (rose.json nella cartella della stagione): si sceglie una volta, poi la pagina lo rilegge da sola">File delle rose&hellip;</button>
     <input type="file" id="lmrfile" accept=".json,application/json" hidden><span class="mut" id="lmrinfo"></span></div>
   <div class="row"><label>Nostra squadra <input type="text" id="lmus"></label><label>Avversari <input type="text" id="lmthem"></label></div>
+  <div class="row"><button class="sm" id="lmconv" title="Trasforma uno scout di Volleyball Scout in scout della pagina: tocchi, voti, zone, formazioni e cambi; gli istanti dei tocchi vanno poi timbrati">Converti uno scout .dvw in scout della pagina&hellip;</button>
+    <input type="file" id="lmcfile" accept=".dvw,text/plain,application/octet-stream" hidden></div>
   <div class="row"><b>Rosa</b><button class="sm" id="lmadd">+ giocatrice</button><button class="sm" id="lmdvw">Importa da un .dvw&hellip;</button>
     <button class="sm" id="lmsc" hidden>Prendi dallo scout caricato</button><input type="file" id="lmfile" accept=".dvw,text/plain,application/octet-stream" hidden>
     <span class="mut">Il ruolo serve solo a riconoscere il libero e a proporre la palleggiatrice: in campo i ruoli vengono dalla posizione.</span></div>
@@ -1390,6 +1393,7 @@ const ScoutLib = (function () {
         const t = { id: id++, tipo: s === "P" ? "Pallonetto" : DVW_SKILL[s], voto: e.v === "#" ? "++" : e.v, cognome: name(n), numero: n, posG: places[n] || "",
           posP: "P" + Rules.rot(rs), lu: rs.lu.slice(), set, loc: score(rs).loc, osp: score(rs).osp, cod, tm: tmOf(e.t), t: e.t, ev: i,
           tags: Array.isArray(e.tags) ? e.tags.slice() : [] };
+        if (e.est) t.est = true;                                      // istante stimato (scout convertito da VS, da timbrare)
         if (e.p0 || e.p1) t.xy = [xyCode(e.p0), e.pm ? xyCode(e.pm) : "-1-1", xyCode(e.p1)];
         if (e.z0) t.da = String(e.z0);
         if (e.z1) t.a = String(e.z1);
@@ -1430,6 +1434,10 @@ const ScoutLib = (function () {
       } else if (e.k === "note") {
         const txt = String(e.txt || "").replace(/[;\r\n]+/g, " ").trim();
         evRow(">" + txt); ev.push("nota: " + txt);
+      } else if (e.k === "cfg") {                                         // formazione corretta a mano (configurazione "before" di VS)
+        st = Object.assign({}, st, { lu: e.lu.slice(), setter: e.setter, pair: (e.pair || []).slice(), lib: e.lib ?? null, lib2: e.lib2 ?? null });
+        cfgNext = cfgOf(st, "before");
+        ev.push("formazione corretta a mano: palleggiatrice in P" + Rules.rot(st));
       } else if (e.k === "rot") {
         const lu = e.d < 0 ? st.lu.slice(5).concat(st.lu.slice(0, 5)) : st.lu.slice(1).concat(st.lu.slice(0, 1));
         st = Object.assign({}, st, { lu }); cfgNext = cfgOf(st, "before");
@@ -1523,9 +1531,81 @@ const ScoutLib = (function () {
     const R = liveReplay(doc), ours = R.side === "loc";
     return { v: 1, partita: { data: doc.date || "", avversario: String(doc.them || "").trim(), squadra: String(doc.us || "").trim(), casa: doc.home !== false },
       tocchi: R.touchList.filter(t => t.numero !== null && t.numero !== undefined).map((t, i) => ({ i, set: t.set, punti: ours ? [t.loc, t.osp] : [t.osp, t.loc],
-        n: t.numero, cognome: t.cognome, fond: t.tipo, voto: t.voto, t: t.t, tags: (t.tags || []).map(x => x.trim()).filter(Boolean) })) };
+        n: t.numero, cognome: t.cognome, fond: t.tipo, voto: t.voto, t: t.est ? null : t.t, tags: (t.tags || []).map(x => x.trim()).filter(Boolean) })) };
   }
-  const Live = { replay: liveReplay, tagKey, tagSummary, companion, scout: liveScout, header: liveHeader, code: liveCode, closes: liveCloses, roster: dvwRoster, clock: clockOf,
+  // ---- scout di Volleyball Scout (.dvw) -> scout della pagina. timing(i) = [inizio, fine] della clip abbinata al punto i
+  // (oppure null): gli istanti dei tocchi si stimano dentro la clip e restano da timbrare (est: true). Senza timing si
+  // usano gli orari del .dvw dall'inizio del set 1: solo per le prove, perche' non coincidono col video.
+  // them = nome dell'avversario se il file non lo ha (di solito il nome del file).
+  function liveFromDvw(text, timing, them) {
+    const S = loadDvw(text), x = S.dv.x, ros = dvwRoster(text), mine = S.side;
+    const num = v => (v === "" || v === undefined ? null : Number(v));
+    const cfgParse = c => { if (!c) return null; const f = c.split(";"); return { lu: f.slice(5, 11).map(num), lib: num(f[11]), lib2: num(f[12]), pair: (f[13] || "").split(",").filter(Boolean).map(Number), rot: Number(String(f[3] || "").slice(1)) || null }; };
+    const xyp = c => (c && c !== "-1-1" ? [Math.floor(+c / 100), +c % 100] : null);
+    const m = /^(\d+)\/(\d+)\/(\d+);([\d.]+)/.exec((x.raw["3MATCH"] || [""])[0]) || [];
+    const base = x.starts[1] ? x.starts[1].tm : "00.00.00";
+    const clockT = tm => { let d = (secs(tm) || 0) - (secs(base) || 0); if (d < 0) d += 86400; return d; };
+    const teams = x.raw["3TEAMS"] || [], other = String((teams[mine === "loc" ? 1 : 0] || "").split(";")[1] || "").trim();
+    const doc = { v: 1, date: m[3] ? m[3] + "-" + m[2] + "-" + m[1] : "", time: m[4] || "00.00.00", home: ros.home, us: ros.us, them: other || String(them || "").trim(),
+      roster: ros.roster, ev: [] };
+    if (!timing) doc.clock = base;
+    // correzioni manuali di VS (configurazioni "before"): valgono dal punto in cui stanno
+    const lines = text.split(/\r?\n/), sc = lines.slice(lines.indexOf("[3SCOUT]") + 1), before = {};
+    const vi = lines.indexOf("[3VBSCONFIGURATIONS]");
+    if (vi >= 0) lines.slice(vi + 1).filter(l => /^\d+;before;/.test(l)).forEach(l => {
+      const k = Number(l.split(";")[0]);
+      before[sc.slice(0, k).filter(r => /^[*a]p\d/.test(r)).length] = cfgParse(l.slice(l.indexOf(";") + 1));
+    });
+    let set = null, lib = null, last = -0.01, nset = 0;
+    const est = !!timing;
+    const at = t => { const v = Math.round(Math.max(t, last + 0.01) * 100) / 100; last = v; return v; };
+    S.plist.forEach((q, qi) => {
+      const p = S.points[qi], tl = p.touches.filter(t => t.cod), w = timing ? timing(qi) : null;
+      const k = tl.length;
+      // istante del j-esimo evento del punto (j = -1: prima dei tocchi; j = k: dopo)
+      const T = (j, tm) => !timing ? clockT(tm) : w ? at(w[0] + (w[1] - w[0]) * (j + 1) / (k + 2)) : at(last + 1);
+      if (q.set !== set) {
+        set = q.set; nset++;
+        const s0 = x.starts[set], c = cfgParse(s0.cfg);
+        const ft = p.touches.find(t => t.numero !== null);
+        let serve = ft ? ft.tipo === "Battuta" : false;
+        if (!ft && q.w === mine) { const nx = S.plist[qi + 1]; serve = !!nx && nx.rot === q.rot; }
+        lib = c ? c.lib : null;
+        doc.ev.push({ k: "set", t: T(-1, s0.tm), lu: s0.lu, setter: Number(s0.p.slice(2, 4)), serve, lib, lib2: c ? c.lib2 : null,
+          pair: c ? c.pair : [], left: nset % 2 === 1 });
+      }
+      for (const e of q.evr || []) {
+        const cm = e.c.match(/^([*a])c(\d+):(\d+)/);
+        if (cm) {
+          if ((cm[1] === "*") === (mine === "loc")) doc.ev.push({ k: "sub", t: T(-1, e.tm), out: +cm[2], in: +cm[3] });
+          const nl = e.cfg ? num(e.cfg.split(";")[11]) : null;            // libero cambiato insieme al cambio: in VS non ha una riga
+          if (nl !== null && lib !== null && nl !== lib) { doc.ev.push({ k: "sub", t: T(-1, e.tm), out: lib, in: nl }); lib = nl; }
+          continue;
+        }
+        if (/^[*a]T/.test(e.c)) doc.ev.push({ k: "to", t: T(-1, e.tm), who: (e.c[0] === "*") === (mine === "loc") ? "noi" : "loro" });
+        else if (e.c[0] === ">") doc.ev.push({ k: "note", t: T(-1, e.tm), txt: e.c.slice(1) });
+      }
+      const fix = before[qi];
+      if (fix && fix.rot) { doc.ev.push({ k: "cfg", t: T(-1, q.tm), lu: fix.lu, setter: fix.lu[fix.rot - 1], pair: fix.pair, lib: fix.lib, lib2: fix.lib2 }); lib = fix.lib; }
+      tl.forEach((t, j) => {
+        const c = t.cod, e = { k: "t", t: T(j, t.tm), n: t.numero, s: c[0] === "A" && c[9] === "T" ? "P" : c[0], v: c[2] };
+        if ((c[0] === "S" || c[0] === "R") && c[1] !== "H") e.bt = c[1];
+        if (c[6] && c[6] !== "~") e.z0 = c[6];
+        if (c[7] && c[7] !== "~") e.z1 = c[7];
+        if (t.xy) { const a = xyp(t.xy[0]), b = xyp(t.xy[1]), d = xyp(t.xy[2]); if (a) e.p0 = a; if (b) e.pm = b; if (d) e.p1 = d; }
+        if (est) e.est = true;
+        doc.ev.push(e);
+      });
+      const lt = tl[tl.length - 1];
+      if (!(lt && liveCloses(lt.cod[0] === "A" && lt.cod[9] === "T" ? "P" : lt.cod[0], lt.cod[2]))) {
+        const g = (q.gens || [])[0];
+        const e = g ? { k: "g", t: T(k, q.tm), who: g[0] === mine ? "noi" : "loro", r: g[1] } : { k: "g", t: T(k, q.tm), who: q.w === mine ? "noi" : "loro", r: "#" };
+        doc.ev.push(e);
+      }
+    });
+    return doc;
+  }
+  const Live = { replay: liveReplay, tagKey, tagSummary, companion, fromDvw: liveFromDvw, scout: liveScout, header: liveHeader, code: liveCode, closes: liveCloses, roster: dvwRoster, clock: clockOf,
     zoneAt, zoneCenter, GEO, SAN: LIVE_SAN };
 
   return { readXlsx, parseScout, buildPoints, fromTouches, loadScout, loadScoutFile, parseDvw, fromDvw, loadDvw, toDvw, dvwBytes, dvDetails, dvEval, dvFilterOptions, dvFixed, dvShown, dvMatch, ended, target,
@@ -1812,7 +1892,7 @@ function TS() {
   }
   return tsCache.s;
 }
-const tchAvail = () => { const S = TS(); return !!(S && S.touchList.some(t => typeof t.t === "number" && t.numero !== null)); };
+const tchAvail = () => { const S = TS(); return !!(S && S.touchList.some(t => typeof t.t === "number" && t.numero !== null && !t.est)); };
 function tchPass(t, p) {
   if (FLT.set && String(p.set) !== FLT.set) return false;
   if (FLT.won && FLT.won !== "err" && p.winner !== FLT.won) return false;
@@ -1827,7 +1907,7 @@ function tchList() {
   if (tchCache.scout === S && tchCache.key === key) return tchCache.list;
   const list = [];
   for (const p of S.points) for (const t of p.touches) {
-    if (typeof t.t !== "number" || t.numero === null || !tchPass(t, p)) continue;
+    if (typeof t.t !== "number" || t.numero === null || t.est || !tchPass(t, p)) continue;
     list.push({ tch: t, p, start: Math.max(0, t.t - TW.pre), end: Math.min(DUR, t.t + TW.post) });
   }
   list.sort((a, b) => a.tch.t - b.tch.t);
@@ -2869,6 +2949,47 @@ function ctagsSync() {
   tagEditor(i, el, () => { sel = tchList().find(w => w.tch.ev === i) || sel; renderCine(); });
 }
 
+// ---- timbratura degli istanti (scout convertito da VS): STP = indice del tocco in attesa
+let STAMP = false, STP = -1, stampKey = "";
+const stampLeft = () => (LIVE ? LIVE.ev.filter(e => e.k === "t" && e.est).length : 0);
+const touchAt = i => LRF && LRF.touchList.find(t => t.ev === i);
+const touchKey = t => (t ? t.set + ":" + t.loc + ":" + t.osp : "");
+function stampGo(i) {
+  STP = i; SEL = i; selScroll = true;
+  const e = LIVE.ev[i], k = touchKey(touchAt(i));
+  if (k !== stampKey) {                                     // punto nuovo: il video va all'inizio della sua clip
+    const c = kept().find(r => e.t >= r.start - 1 && e.t <= r.end + 1);
+    v.pause(); seek(Math.max(0, c ? c.start : e.t - 3));
+  }
+  svRender();
+}
+function stampNext(from) {
+  const i = LIVE.ev.findIndex((e, j) => j > from && e.k === "t" && e.est);
+  if (i < 0) { STAMP = false; SEL = null; svNote = stampLeft() ? "Timbratura interrotta: restano " + stampLeft() + " tocchi con istante stimato (si riprende con Timbra gli istanti)." : "Timbratura finita: tutti i tocchi hanno il loro istante."; svRender(); return; }
+  stampGo(i);
+}
+function stampStart() {
+  if (!LIVE || !stampLeft()) return;
+  STAMP = true; stampKey = ""; INS = null; C = null; liveChanged();
+  stampNext(-1);
+}
+function stampKeyDown(k) {
+  if (k === "Enter") {
+    const e = LIVE.ev[STP]; if (!e) { stampNext(-1); return; }
+    e.t = Math.round(v.currentTime * 100) / 100; delete e.est;
+    stampKey = touchKey(touchAt(STP)); liveChanged(); stampNext(STP); return;
+  }
+  if (k === "n" || k === "N") { stampKey = touchKey(touchAt(STP)); stampNext(STP); return; }
+  if (k === "Backspace") {
+    let j = STP - 1; while (j >= 0 && LIVE.ev[j].k !== "t") j--;
+    if (j < 0) return;
+    LIVE.ev[j].est = true; liveChanged();
+    stampKey = touchKey(touchAt(j)); STP = j; SEL = j; selScroll = true; v.pause(); seek(Math.max(0, LIVE.ev[j].t - 1.5)); svRender(); return;
+  }
+  if (k === "Escape") { STAMP = false; svRender(); }
+}
+$("svstamp").onclick = () => { if (STAMP) { STAMP = false; svRender(); } else stampStart(); };
+
 // ---- correzione di eventi gia' inseriti
 function selEv(i) { SEL = i; selScroll = true; svRender(); }
 function delEv(i) {
@@ -3051,6 +3172,12 @@ function svKey(e) {
     return false;
   }
   const k = e.key, kl = k.toLowerCase();
+  if (STAMP) {
+    if (k === "Enter" || kl === "n" || k === "Backspace" || k === "Escape") { e.preventDefault(); stampKeyDown(k); return true; }
+    if (k === " " || k === "," || k === "." || /^Arrow/.test(k) || e.ctrlKey || e.metaKey) return false;
+    if (/^F\d+$/.test(k)) e.preventDefault();
+    return true;
+  }
   if (/^F[1-9]$/.test(k)) { e.preventDefault(); fkey(+k.slice(1)); return true; }
   if (/^F\d+$/.test(k)) { e.preventDefault(); return true; }
   if (k === "Escape") { if (C) C = null; else if (SEL !== null) SEL = null; else if (INS !== null) { insEnd(); return true; } svRender(); return true; }
@@ -3166,6 +3293,11 @@ function svHead() {
   if (LR.phase === "over") x += '<p class="good">Partita finita (set ' + won[0] + "-" + won[1] + ").</p>";
   if (LR.issues.length) x += '<p class="bad">' + esc(LR.issues[LR.issues.length - 1]) + "</p>";
   if (svNote) { x += '<p class="mut">' + esc(svNote) + "</p>"; svNote = ""; }
+  if (STAMP && LIVE.ev[STP]) {
+    const tt = touchAt(STP);
+    x += '<div class="row svins"><span>Timbratura &middot; prossimo: <b>' + esc(evText(LIVE.ev[STP])) + "</b>" + (tt ? " &middot; S" + tt.set + " " + tt.loc + "-" + tt.osp : "") +
+      " &middot; ne restano " + stampLeft() + '. <kbd>Invio</kbd> = adesso, <kbd>N</kbd> salta, <kbd>&#9003;</kbd> indietro, <kbd>Esc</kbd> fine.</span></div>';
+  }
   if (INS !== null) x += '<div class="row svins"><span>Inserimento ' + (LIVE.ev[INS] ? "prima di <b>" + esc(evText(LIVE.ev[INS])) + "</b> (" + fmt(LIVE.ev[INS].t) + ")" : "in coda") +
     ': punteggio e campo sono quelli di quel momento.</span><button class="sm" id="svinsend">Fine inserimento <kbd>Esc</kbd></button></div>';
   const lt = LR.rally[LR.rally.length - 1];
@@ -3213,7 +3345,7 @@ function svLast() {
   }
   const row = i => {
     const e = LIVE.ev[i], p = pts[i], on = i === SEL;
-    let h = '<div class="ci' + (on ? " on" : "") + (e.k === "set" ? " st" : "") + '" data-i="' + i + '"><span class="n">' + fmt(e.t) + '</span><span class="tg">' +
+    let h = '<div class="ci' + (on ? " on" : "") + (e.k === "set" ? " st" : "") + '" data-i="' + i + '"><span class="n"' + (e.est ? ' title="Istante stimato: da timbrare"' : "") + ">" + (e.est ? "&asymp;" : "") + fmt(e.t) + '</span><span class="tg">' +
       esc(e.k === "set" && setNo[i] ? "inizio set " + setNo[i] : evText(e)) + (e.tags && e.tags.length ? " · " + e.tags.join(", ") : "") + "</span>" +
       (p ? '<span class="sc ' + (p.won ? "w" : "l") + '" title="' + (p.won ? "punto nostro" : "punto avversario") + '">' + p.s + "</span>" : "") +
       '<button class="sm" data-d="-1" title="Anticipa di 0,1 s">&minus;0,1</button><button class="sm" data-d="1" title="Ritarda di 0,1 s">+0,1</button></div>';
@@ -3241,7 +3373,11 @@ function svLast() {
   if ($("svtags")) tagEditor(SEL, $("svtags"), () => { svRender(); const n = $("svtags"); if (n) n.querySelector("input").focus(); });
   if (selScroll) { selScroll = false; const on = el.querySelector(".ci.on"); if (on) on.scrollIntoView({ block: "nearest" }); }
 }
-function svRender() { if (!svOn) return; svHead(); svCourt(); svComp(); svGrid(); svLast(); }
+function svRender() {
+  if (!svOn) return;
+  $("svstamp").hidden = !(STAMP || stampLeft()); $("svstamp").textContent = STAMP ? "Fine timbratura" : "Timbra gli istanti (" + stampLeft() + ")";
+  svHead(); svCourt(); svComp(); svGrid(); svLast();
+}
 function svTick() {
   const s = fmt(v.currentTime) + " / " + fmt(DUR), p = v.paused ? "&#9654;" : "&#10074;&#10074;";
   if ($("svtime").textContent !== s) $("svtime").textContent = s;
@@ -3420,6 +3556,26 @@ function openMatchDlg(first) {
 }
 $("lmadd").onclick = () => { const r = lmRead(); r.push({}); lmRows(r); };
 $("lmdvw").onclick = () => $("lmfile").click();
+$("lmconv").onclick = () => $("lmcfile").click();
+$("lmcfile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  let doc, S;
+  try {
+    const text = new TextDecoder("windows-1252").decode(await f.arrayBuffer());
+    S = ScoutLib.loadDvw(text);
+    // clip di ogni punto: l'abbinamento dello scout gia' caricato se ha gli stessi punti, se no quello in ordine
+    let clips = R;
+    if (!(SCOUT && !SCOUT.live && SCOUT.points.length === S.points.length)) { clips = R.map(r => Object.assign({}, r)); ScoutLib.autoMatch(clips, S.points, D.min_clip_s || 0.5); }
+    const by = new Map(clips.filter(r => r.sp).map(r => [r.sp, r]));
+    doc = LV.fromDvw(text, i => { const r = by.get(i + 1); return r ? [r.start, r.end] : null; }, f.name.replace(/\.dvw$/i, "").replace(/\s*\(.*\)\s*$/, ""));
+  } catch (err) { alert("Non riesco a convertire lo scout: " + err.message); return; }
+  if (LIVE && LIVE.ev.length && !confirm("Questa partita ha gia' uno scout fatto nella pagina (" + LIVE.ev.length + " inserimenti). Sostituirlo con lo scout convertito?")) return;
+  LIVE = doc; SEL = INS = null; STAMP = false;
+  $("lmdlg").close(); liveChanged(); if (!svOn) setSv(true);
+  svNote = "Scout convertito da " + f.name + ": " + stampLeft() + " tocchi con istante stimato. Premi Timbra gli istanti per assegnare a ognuno il suo." + (LR.issues.length ? " Ci sono " + LR.issues.length + " avvisi da controllare." : "");
+  svRender();
+};
 $("lmfile").onchange = async e => {
   const f = e.target.files[0]; e.target.value = "";
   if (!f) return;

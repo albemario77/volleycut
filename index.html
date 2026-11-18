@@ -1807,7 +1807,10 @@ let DUR = D.duration;
 let KEY = "volleycut:" + D.video_name;
 let R = D.rallies.map(r => Object.assign({}, r));
 let sel = null;                       // rally selezionato (riferimento all'oggetto)
-let SCOUT = null, MATCH = null;       // scout caricato e controlli sull'abbinamento clip <-> punti
+let SCOUT = null, MATCH = null;       // scout in uso e controlli sull'abbinamento clip <-> punti
+// scout importato da file (.dvw/.xlsx): si conserva sempre nel json, ma se c'e' lo scout fatto nella pagina (anche
+// convertito da questo e poi corretto) quello in uso per clip, filtri e tocchi e' lo scout della pagina
+let SCOUT_IMP = null;
 let v0 = 0, v1 = Math.min(DUR, 600);  // finestra visibile della timeline
 
 // ---- utilita'
@@ -1817,7 +1820,7 @@ const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const sorted = () => R.sort((a, b) => a.start - b.start || a.end - b.end);
 const kept = () => sorted().filter(r => r.keep);
 const store = {
-  save() { try { localStorage.setItem(KEY, JSON.stringify(R)); localStorage.setItem(KEY + ":scout", SCOUT ? JSON.stringify(scoutMeta()) : ""); localStorage.setItem(KEY + ":del", JSON.stringify(D.deleted || [])); localStorage.setItem(KEY + ":live", LIVE ? JSON.stringify(LIVE) : ""); } catch (e) {} },
+  save() { try { localStorage.setItem(KEY, JSON.stringify(R)); localStorage.setItem(KEY + ":scout", SCOUT_IMP ? JSON.stringify(scoutMeta()) : ""); localStorage.setItem(KEY + ":del", JSON.stringify(D.deleted || [])); localStorage.setItem(KEY + ":live", LIVE ? JSON.stringify(LIVE) : ""); } catch (e) {} },
   loadLive() { try { const s = localStorage.getItem(KEY + ":live"); return s ? JSON.parse(s) : null; } catch (e) { return null; } },
   loadScout() { try { const s = localStorage.getItem(KEY + ":scout"); return s ? JSON.parse(s) : null; } catch (e) { return null; } },
   loadDeleted() { try { return JSON.parse(localStorage.getItem(KEY + ":del") || "[]"); } catch (e) { return []; } },
@@ -1830,12 +1833,13 @@ const normEdited = list => { list.forEach(r => { if (!("edited" in r)) r.edited 
 const saved = D.empty ? null : store.load();
 if (saved && saved.length) { R = saved; D.deleted = store.loadDeleted(); }
 normEdited(R);
-const scoutMeta = () => (SCOUT && !SCOUT.live ? Object.assign({ file: SCOUT.file, team: SCOUT.team, touchList: SCOUT.touchList }, SCOUT.plist ? { plist: SCOUT.plist, dv: SCOUT.dv } : {}) : null);
+const scoutMeta = () => (SCOUT_IMP ? Object.assign({ file: SCOUT_IMP.file, team: SCOUT_IMP.team, touchList: SCOUT_IMP.touchList }, SCOUT_IMP.plist ? { plist: SCOUT_IMP.plist, dv: SCOUT_IMP.dv } : {}) : null);
 function restoreScout(m) {
-  SCOUT = null;
+  SCOUT = SCOUT_IMP = null;
   if (m && m.touchList && m.touchList.length) {        // con `plist` lo scout viene da un .dvw: i punti sono gia' espliciti
     try { SCOUT = m.plist ? ScoutLib.fromDvw(m.team || "", m.touchList, m.plist, [], m.dv) : ScoutLib.fromTouches(m.team || "", m.touchList, []); SCOUT.file = m.file || "scout"; } catch (e) { SCOUT = null; }
   }
+  SCOUT_IMP = SCOUT;
   refreshMatch();
 }
 function refreshMatch() { MATCH = SCOUT ? ScoutLib.analyze(R, SCOUT.points, D.min_clip_s || 0.5) : null; }
@@ -2109,8 +2113,13 @@ $("sfile").onchange = $("sfiled").onchange = async e => {
   let s;
   try { s = await ScoutLib.loadScoutFile(await f.arrayBuffer()); }
   catch (err) { alert("Non riesco a leggere lo scout: " + err.message); return; }
+  s.file = f.name;
+  if (LIVE && LRF && LRF.plist.length) {                    // lo scout fatto nella pagina resta quello in uso
+    if (!confirm("Questa partita ha lo scout fatto nella pagina, che resta quello in uso per clip e tocchi. Conservare comunque nel file lo scout " + f.name + "?")) return;
+    SCOUT_IMP = s; changed(); return;
+  }
   if (R.some(r => r.spm) && !confirm("Ci sono abbinamenti corretti a mano. Sostituirli con l'abbinamento in ordine del nuovo scout?")) return;
-  s.file = f.name; SCOUT = s;
+  SCOUT = SCOUT_IMP = s;
   ScoutLib.autoMatch(R, SCOUT.points, D.min_clip_s || 0.5);
   changed(); showScout();
 };
@@ -2437,7 +2446,7 @@ const projectData = () => ({ video_name: D.video_name, duration: D.duration, thr
   cells: D.cells, zones: D.zones, deleted: D.deleted || [], compact: D.compact || null });
 let loadedRev = +(D.meta && D.meta.revision || 0);          // revisione del file aperto: serve a non sovrascrivere un salvataggio fatto altrove
 const toJSON = rev => JSON.stringify({ meta: Object.assign({}, D.meta, { reviewed: true, revision: rev, saved_at: new Date().toISOString() },
-  SCOUT && !SCOUT.live ? { scout: scoutMeta() } : {}, LIVE ? { live: LIVE } : {}, { project: projectData() }),
+  SCOUT_IMP ? { scout: scoutMeta() } : {}, LIVE ? { live: LIVE } : {}, { project: projectData() }),
   rallies: sorted().map((r, i) => Object.assign({}, r, { n: i + 1, duration: r.end - r.start })) }, null, 2);
 function setProject(pj, rallies) {
   D = Object.assign({}, EMPTY, pj, { empty: false, video_src: "", rallies: rallies.map(r => Object.assign({}, r)),
@@ -2867,11 +2876,11 @@ function liveRefresh() {                                  // rigioco e, se serve
   if (LIVE && SEL !== null && SEL >= LIVE.ev.length) SEL = null;
   LRF = LIVE ? LV.replay(LIVE) : null;
   LR = LIVE && INS !== null ? LV.replay(Object.assign({}, LIVE, { ev: LIVE.ev.slice(0, INS) })) : LRF;
-  if (!SCOUT || SCOUT.live) liveToScout();
+  if (!SCOUT || SCOUT.live || (LRF && LRF.plist.length)) liveToScout();
 }
 function liveChanged() { liveRefresh(); store.save(); markDirty(true); svRender(); }
 function liveToScout() {
-  if (!LIVE || !LRF || !LRF.plist.length) { if (SCOUT && SCOUT.live) { SCOUT = null; refreshMatch(); } return; }
+  if (!LIVE || !LRF || !LRF.plist.length) { if (SCOUT && SCOUT.live) { SCOUT = SCOUT_IMP; refreshMatch(); } return; }
   const d = LV.scout(LIVE);
   SCOUT = ScoutLib.fromDvw(d.team, d.touchList, d.plist, [], d.dv); SCOUT.live = true; SCOUT.file = "scout fatto nella pagina";
   // abbinamento clip <-> punti dall'istante: la clip con Tieni che contiene il primo tocco (o l'ER/PT) del punto
@@ -3550,7 +3559,7 @@ roseRead(false);
 let lmFirst = false, lmTeam = null;                     // lmTeam: nome esatto e codice VS della squadra scelta
 function openMatchDlg(first) {
   lmFirst = first; lmTeam = null;
-  const sc = SCOUT && !SCOUT.live && SCOUT.dv && SCOUT.dv.x ? SCOUT : null;
+  const sc = SCOUT_IMP && SCOUT_IMP.dv && SCOUT_IMP.dv.x ? SCOUT_IMP : null;
   const scRoster = sc ? rosterFromRaw(sc.dv.x.raw[sc.side === "loc" ? "3PLAYERS-H" : "3PLAYERS-V"]) : [];
   const day = (/(\d{4}-\d{2}-\d{2})/.exec((D.cli && D.cli.match) || D.video_name || "") || [])[1] || new Date().toISOString().slice(0, 10);
   const m = LIVE || { date: day, time: "", home: sc ? sc.side === "loc" : true, us: sc ? sc.team.replace(/^(Locali|Ospiti):\s*/, "") : "", them: "", roster: scRoster };
@@ -3578,7 +3587,7 @@ $("lmcfile").onchange = async e => {
     S = ScoutLib.loadDvw(text);
     // clip di ogni punto: l'abbinamento dello scout gia' caricato se ha gli stessi punti, se no quello in ordine
     let clips = R;
-    if (!(SCOUT && !SCOUT.live && SCOUT.points.length === S.points.length)) { clips = R.map(r => Object.assign({}, r)); ScoutLib.autoMatch(clips, S.points, D.min_clip_s || 0.5); }
+    if (!(SCOUT && SCOUT.points.length === S.points.length)) { clips = R.map(r => Object.assign({}, r)); ScoutLib.autoMatch(clips, S.points, D.min_clip_s || 0.5); }
     const by = new Map(clips.filter(r => r.sp).map(r => [r.sp, r]));
     doc = LV.fromDvw(text, i => { const r = by.get(i + 1); return r ? [r.start, r.end] : null; }, f.name.replace(/\.dvw$/i, "").replace(/\s*\(.*\)\s*$/, ""));
   } catch (err) { alert("Non riesco a convertire lo scout: " + err.message); return; }

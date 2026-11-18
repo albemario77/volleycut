@@ -1310,9 +1310,9 @@ const ScoutLib = (function () {
   //         {k:"san", t, who: "noi" | "panchina" | "loro", n, kind: "avv" | "pen" | "esp" | "squ" | "rit"}
   const LIVE_SAN = { avv: "avvertimento", pen: "penalita'", esp: "espulsione", squ: "squalifica", rit: "ritardo di gioco" };
   const ROLE_NUM = { L: 1, B: 2, O: 3, C: 4, P: 5 };
-  // chiude il punto: "=" su qualsiasi tocco, "#" su battuta, attacco, muro, free ball. L'attacco murato ("/") no: lo
-  // scambio puo' continuare; se il muro fa punto si preme "punto avversario" (vedi il caso in liveReplay)
-  const liveCloses = (s, v) => v === "=" || (v === "#" && "SAPBF".includes(s));
+  // chiude il punto: "=" su qualsiasi tocco, "#" su battuta, attacco, muro, free ball; "/" su attacco e pallonetto =
+  // murato, punto avversario (regola dell'utente, 2026-11-18: cosi' in tutti i file di VS tranne La Contea, la piu' vecchia)
+  const liveCloses = (s, v) => v === "=" || (v === "#" && "SAPBF".includes(s)) || (v === "/" && "AP".includes(s));
   const clockOf = (base, t) => {
     const b = secs(base || "00.00.00") || 0, v = (b + Math.floor(Math.max(0, t || 0))) % 86400;
     return pad2(Math.floor(v / 3600)) + "." + pad2(Math.floor(v % 3600 / 60)) + "." + pad2(v % 60);
@@ -1332,7 +1332,7 @@ const ScoutLib = (function () {
     const x = { raw: {}, starts: {}, ends: {}, odd: 0 };
     const out = { side, team: (home ? "Locali: " : "Ospiti: ") + (doc.us || "").trim(), touchList: [], plist: [], sets: [], issues: [],
       st: null, rs: null, rally: [], phase: "setup", setsWon: [0, 0], to: { noi: 0, loro: 0 }, bt: {}, played: {}, x, last: null };
-    let st = null, set = 0, rally = [], ev = [], evr = [], cfgNext = null, id = 1, rs = null;
+    let st = null, set = 0, rally = [], ev = [], evr = [], cfgNext = null, id = 1, rs = null, blkAt = -1;   // blkAt: indice dell'ultimo attacco murato che ha chiuso il punto
     const tmOf = t => clockOf(doc.clock || doc.time, t);              // orario delle righe: ora d'inizio + istante del video
     const score = s => (side === "loc" ? { loc: s.score[0], osp: s.score[1] } : { loc: s.score[1], osp: s.score[0] });
     const cfgOf = (s, kind) => kind + ";" + mine + ";fiveOne;p" + Rules.rot(s) + ";p" + Rules.rot(s) + ";" + s.lu.join(";") + ";" +
@@ -1390,6 +1390,7 @@ const ScoutLib = (function () {
         if (s === "S" && e.bt) out.bt[n] = e.bt;
         if (!places[n]) out.issues.push("Set " + set + " " + score(rs).loc + "-" + score(rs).osp + ": la #" + n + " tocca la palla ma non e' in campo.");
         rally.push(t);
+        if (e.v === "/" && (s === "A" || s === "P")) blkAt = i;
         if (liveCloses(s, e.v)) close(e.v === "#", s === "F" && e.v === "#" ? [] : [[opp, e.v === "#" ? "=" : "#"]], e.t, i);
         return;
       }
@@ -1400,6 +1401,9 @@ const ScoutLib = (function () {
         const lt = rally[rally.length - 1];
         // punto avversario subito dopo un nostro attacco murato: in VS e' l'attacco a chiudere (una sola riga generica)
         if (!ours && e.r === "#" && lt && lt.cod && lt.cod[0] === "A" && lt.voto === "/") { close(false, [[opp, "#"]], e.t, i); return; }
+        // scout fatti con la regola vecchia: attacco murato e poi PT loro. Ora il murato chiude gia' il punto: il PT loro
+        // subito dopo e' lo stesso punto, non un altro
+        if (!ours && e.r === "#" && !rally.length && blkAt === i - 1) return;
         if (ours && e.r === "=" && !(lt && (lt.voto === "++" || lt.voto === "=")))   // come nella lettura dei .dvw: una riga "Errore generico"
           rally.push({ id: id++, tipo: "Errore generico", voto: "", cognome: "", numero: null, posG: "", posP: "P" + Rules.rot(rs), set, loc: score(rs).loc, osp: score(rs).osp, t: e.t, ev: i });
         close(won, [g1, g2], e.t, i);
@@ -3075,7 +3079,6 @@ function svHead() {
   if (INS !== null) x += '<div class="row svins"><span>Inserimento ' + (LIVE.ev[INS] ? "prima di <b>" + esc(evText(LIVE.ev[INS])) + "</b> (" + fmt(LIVE.ev[INS].t) + ")" : "in coda") +
     ': punteggio e campo sono quelli di quel momento.</span><button class="sm" id="svinsend">Fine inserimento <kbd>Esc</kbd></button></div>';
   const lt = LR.rally[LR.rally.length - 1];
-  if (lt && lt.cod && lt.cod[0] === "A" && lt.voto === "/") x += '<p class="sus">Attacco murato: se il muro avversario ha fatto punto premi PT loro (F4).</p>';
   h.innerHTML = x;
   if ($("svsetb")) $("svsetb").onclick = openSetDlg;
   if ($("svinsend")) $("svinsend").onclick = insEnd;

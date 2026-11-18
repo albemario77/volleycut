@@ -3245,7 +3245,14 @@ function svCourt() {
     return (pts.length > 1 ? '<polyline points="' + pts.map(p => sx(p[0]) + "," + sy(p[1])).join(" ") + '" class="trk ' + cls + '"/>' : "") +
       pts.map(p => '<circle cx="' + sx(p[0]) + '" cy="' + sy(p[1]) + '" r="' + (cls ? 3 : 5) + '" class="tpt"/>').join(""); };
   const last = SEL !== null && LIVE.ev[SEL] && LIVE.ev[SEL].k === "t" ? LIVE.ev[SEL] : LIVE && [...evView()].reverse().find(e => e.k === "t" || e.k === "set");
-  if (last && last.k === "t" && last.p0 && !C) s += trk(last.p0, last.pm, last.p1, "old");
+  if (last && last.k === "t" && !C) {
+    // senza punti cliccati (scout convertito da VS, zone corrette nella finestra): centro delle zone.
+    // In ricezione la partenza e' la battuta avversaria (meta' loro), l'arrivo e' da noi.
+    const i = LIVE.ev.indexOf(last), lf = i >= 0 ? evLeftAt(i) : left, r = last.s === "R";
+    const p0 = last.p0 || (last.z0 ? LV.zoneCenter(+last.z0, r ? !lf : lf, last.s === "S" || r) : null);
+    const p1 = last.p1 || (last.z1 ? LV.zoneCenter(+last.z1, r ? lf : !lf) : null);
+    if (p0 || p1) s += trk(p0, last.pm, p1, "old");
+  }
   if (C && (C.p0 || C.p1)) s += trk(C.p0, C.pm, C.p1, "");
   if (st && LR.phase === "play") {
     const places = LR.rally.length ? RU.places(LR.rs, "play") : RU.places(st, "start"), srv = serverNo();

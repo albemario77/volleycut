@@ -3155,7 +3155,8 @@ $("svexp").onclick = () => {
   catch (err) { alert("Non riesco a esportare: " + err.message); return; }
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([ScoutLib.dvwBytes(text)], { type: "application/octet-stream" }));
-  a.download = ((LIVE.us || "scout").trim() + " " + (LIVE.them || "").trim() + " " + (LIVE.date || "")).trim().replace(/[\\/:*?"<>|]+/g, "_") + ".dvw"; a.click();
+  // come i file di Volleyball Scout: il nome del file e' quello dell'avversario (VS lo usa come nome della partita)
+  a.download = ((LIVE.them || "").trim() || ("scout " + (LIVE.date || "")).trim()).replace(/[\\/:*?"<>|]+/g, "_") + ".dvw"; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 };
 

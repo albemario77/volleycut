@@ -1344,7 +1344,7 @@ const ScoutLib = (function () {
       const after = Rules.point(st, won);
       const bare = !gens.length && after.rotated;                     // free ball "#": la riga del punto ha gia' la rotazione nuova
       const q = { set, loc: sc.loc, osp: sc.osp, w: won ? side : opp, gen: lt && (lt.voto === "++" || lt.voto === "=") ? null : gens[0] || null,
-        rot: "P" + Rules.rot(bare ? after : s0), lu: (bare ? after : s0).lu.slice(), tm: tmOf(t), gens, t, t0: rally.length ? rally[0].t : t, ev: i, ei: i };   // ei = evento che chiude il punto
+        rot: "P" + Rules.rot(bare ? after : s0), lu: (bare ? after : s0).lu.slice(), tm: tmOf(t), gens, t, t0: rally.length ? rally[0].t : t, ei: i };   // ei = evento che chiude il punto
       if (ev.length) q.ev = ev;
       if (evr.length) q.evr = evr;
       out.plist.push(q);

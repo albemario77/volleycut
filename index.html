@@ -17,6 +17,13 @@ video{max-height:26vh;max-width:100%;background:#000;border-radius:6px}
 #vzoom{position:absolute;left:0;right:0;top:0;bottom:60px;touch-action:none;cursor:zoom-in}
 #vzc{position:absolute;left:0;top:0;right:0;bottom:12px;width:100%;height:calc(100% - 12px);display:none;pointer-events:none;clip-path:inset(0 0 48px 0);background:#000;border-radius:6px}
 #vzc.on{display:block}
+#vgc{position:absolute;left:0;top:0;pointer-events:none;display:none}
+#vgc.on{display:block}
+#vgbar{position:absolute;top:6px;right:6px;display:flex;gap:4px;z-index:3;opacity:.6}
+#vgbar:hover{opacity:1}
+#vcal{position:absolute;left:6px;top:40px;max-width:calc(100% - 12px);z-index:3;background:rgba(0,0,0,.78);color:#fff;padding:6px 8px;border-radius:6px;font-size:13px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#vcal[hidden]{display:none}
+#vcal b{color:#ffe14d}
 #vzoom.on{cursor:grab}
 #vzoom.drag{cursor:grabbing}
 #v{height:var(--vh,26vh);max-height:none}
@@ -155,7 +162,9 @@ button.on{outline:2px solid var(--acc)}
 <body>
 <div id="top">
   <div id="vwrap">
-    <div id="vbox"><video id="v" controls preload="metadata"></video><canvas id="vzc"></canvas><div id="vzoom" title="Rotella: zoom sulla zona. Trascina: sposta. Doppio clic: immagine intera. Clic: play/pausa"></div>
+    <div id="vbox"><video id="v" controls preload="metadata"></video><canvas id="vzc"></canvas><canvas id="vgc"></canvas><div id="vzoom" title="Rotella: zoom sulla zona. Trascina: sposta. Doppio clic: immagine intera. Clic: play/pausa"></div>
+      <div id="vgbar"><button class="sm" id="vgon" title="Griglia del campo con le zone (G)">Griglia</button><button class="sm" id="vgset" title="Segna a mano angoli, rete e linee dei 3 m: la griglia si calcola da li'">Segna il campo&hellip;</button></div>
+      <div id="vcal" hidden><span id="vcalmsg"></span><button class="sm" id="vcalskip">Non si vede</button><button class="sm" id="vcalback">Indietro</button><button class="sm pri" id="vcalok">Fine</button><button class="sm" id="vcalno">Annulla</button></div>
       <div id="vgrip" title="Trascina per ingrandire o ridurre il video (doppio clic: misura iniziale)"></div></div>
     <div id="side">
       <h1>Revisione rally &mdash; <span id="vname"></span></h1>
@@ -1820,7 +1829,8 @@ const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const sorted = () => R.sort((a, b) => a.start - b.start || a.end - b.end);
 const kept = () => sorted().filter(r => r.keep);
 const store = {
-  save() { try { localStorage.setItem(KEY, JSON.stringify(R)); localStorage.setItem(KEY + ":scout", SCOUT_IMP ? JSON.stringify(scoutMeta()) : ""); localStorage.setItem(KEY + ":del", JSON.stringify(D.deleted || [])); localStorage.setItem(KEY + ":live", LIVE ? JSON.stringify(LIVE) : ""); } catch (e) {} },
+  save() { try { localStorage.setItem(KEY, JSON.stringify(R)); localStorage.setItem(KEY + ":scout", SCOUT_IMP ? JSON.stringify(scoutMeta()) : ""); localStorage.setItem(KEY + ":del", JSON.stringify(D.deleted || [])); localStorage.setItem(KEY + ":live", LIVE ? JSON.stringify(LIVE) : ""); localStorage.setItem(KEY + ":court", D.court ? JSON.stringify(D.court) : ""); } catch (e) {} },
+  loadCourt() { try { const s = localStorage.getItem(KEY + ":court"); return s ? JSON.parse(s) : null; } catch (e) { return null; } },
   loadLive() { try { const s = localStorage.getItem(KEY + ":live"); return s ? JSON.parse(s) : null; } catch (e) { return null; } },
   loadScout() { try { const s = localStorage.getItem(KEY + ":scout"); return s ? JSON.parse(s) : null; } catch (e) { return null; } },
   loadDeleted() { try { return JSON.parse(localStorage.getItem(KEY + ":del") || "[]"); } catch (e) { return []; } },
@@ -2031,7 +2041,7 @@ function setCine(on) {
   cine = on; document.body.classList.toggle("cine", on); $("cine").hidden = !on;
   v.controls = !on;
   (on ? $("cvid") : $("vbox")).prepend(v);
-  v.after($("vzc"), $("vzoom"));                                   // lo zoom segue il video
+  v.after($("vzc"), $("vgc"), $("vzoom"), $("vgbar"), $("vcal"));  // zoom e griglia seguono il video
   if (on) $("cpanel").insertBefore($("scflt"), $("clist")); else $("scbar").after($("scflt"));     // i filtri scout seguono la vista
   if (on) { if (!sel && playlist().length) sel = playlist()[0]; renderCine(); } else draw();
 }
@@ -2443,7 +2453,7 @@ function status() {
 function markDirty(d) { dirty = d; status(); }
 const projectData = () => ({ video_name: D.video_name, duration: D.duration, threshold: D.threshold, min_clip_s: D.min_clip_s,
   motion: D.motion, motion_bin: D.motion_bin, motion_max: D.motion_max, whistles: D.whistles, seg: D.seg, fps: D.fps,
-  cells: D.cells, zones: D.zones, deleted: D.deleted || [], compact: D.compact || null });
+  cells: D.cells, zones: D.zones, deleted: D.deleted || [], compact: D.compact || null, court: D.court || null });
 let loadedRev = +(D.meta && D.meta.revision || 0);          // revisione del file aperto: serve a non sovrascrivere un salvataggio fatto altrove
 const toJSON = rev => JSON.stringify({ meta: Object.assign({}, D.meta, { reviewed: true, revision: rev, saved_at: new Date().toISOString() },
   SCOUT_IMP ? { scout: scoutMeta() } : {}, LIVE ? { live: LIVE } : {}, { project: projectData() }),
@@ -2489,7 +2499,7 @@ function loadText(text, name) {
   if (dirty && !confirm("Ci sono modifiche non salvate su file. Aprire comunque e sostituirle?")) return false;
   const pj = d.meta && d.meta.project;
   if (pj && (D.empty || pj.video_name !== D.video_name)) setProject(pj, d.rallies);
-  else if (pj) { ["threshold", "motion", "motion_bin", "motion_max", "cells", "zones", "seg", "fps"].forEach(k => { if (k in pj) D[k] = pj[k]; }); D.deleted = pj.deleted || []; thrPrev = null; }
+  else if (pj) { ["threshold", "motion", "motion_bin", "motion_max", "cells", "zones", "seg", "fps", "court"].forEach(k => { if (k in pj) D[k] = pj[k]; }); D.deleted = pj.deleted || []; thrPrev = null; }
   else if (D.empty) { alert("Questo file non contiene i dati della partita (movimento, fischi). Aprilo da review.html, salva, e poi riaprilo qui."); return false; }
   loadedRev = +(d.meta && d.meta.revision || 0);
   R = d.rallies.map(r => Object.assign({ confidence: 1, confidence_level: "alta", dubious: false, reasons: [], whistle: null, keep: true, tag: "" },
@@ -2668,6 +2678,7 @@ v.addEventListener("seeked", () => { zoomDraw(); draw(); });
 // ingrandita a ogni fotogramma; la fascia in basso con i comandi del video resta quella del browser.
 const Z = { s: 1, cx: 0.5, cy: 0.5 };
 function zoomDraw() {
+  gridDraw();
   if (Z.s <= 1) return;
   const c = $("vzc"), w = v.clientWidth, h = v.clientHeight, d = devicePixelRatio || 1;
   if (c.width !== Math.round(w * d) || c.height !== Math.round(h * d)) { c.width = Math.round(w * d); c.height = Math.round(h * d); }
@@ -2707,16 +2718,149 @@ function zoomTo(s2, fx, fy) {                                   // fx, fy: punto
       if (Math.abs(m.clientX - x0) + Math.abs(m.clientY - y0) > 4) { moved = true; zv.classList.add("drag"); }
       if (moved) { Z.cx = c0[0] - (m.clientX - x0) / g.cw / Z.s; Z.cy = c0[1] - (m.clientY - y0) / g.ch / Z.s; zoomApply(); }
     };
-    zv.onpointerup = () => {
+    zv.onpointerup = u => {
       zv.onpointermove = zv.onpointerup = null; zv.classList.remove("drag");
+      if (!moved && CAL) { calClick(pt(u)); return; }               // segnatura del campo: il clic e' un punto
       if (!moved) { if (cine) $("cplay").click(); else if (v.paused) v.play(); else v.pause(); }      // un clic breve = play/pausa
     };
   });
-  zv.addEventListener("dblclick", () => zoomTo(1, 0.5, 0.5));
+  zv.addEventListener("dblclick", () => { if (!CAL) zoomTo(1, 0.5, 0.5); });
   $("zin").onclick = () => zoomTo(Z.s * 1.5, 0.5, 0.5);
   $("zout").onclick = () => zoomTo(Z.s / 1.5, 0.5, 0.5);
   $("zreset").onclick = () => zoomTo(1, 0.5, 0.5);
 }
+
+// ---- griglia del campo: l'utente segna a mano angoli, rete e linee dei 3 m (in pixel del video); da li' una
+// omografia campo -> video. Campo: X lungo 0 (fondo 1) .. 9 (rete) .. 18 (fondo 2), Y 0 (laterale A) .. 9 (laterale B).
+// Si gira intorno al campo: laterale A da fondo 1 a fondo 2, poi laterale B all'indietro.
+const CPTS = [[0, 0, "angolo tra <b>laterale A</b> e <b>fondo 1</b>"], [6, 0, "<b>laterale A</b>: linea dei 3 m della meta' del fondo 1"],
+  [9, 0, "<b>laterale A</b>: a terra sotto la rete"], [12, 0, "<b>laterale A</b>: linea dei 3 m della meta' del fondo 2"],
+  [18, 0, "angolo tra <b>laterale A</b> e <b>fondo 2</b>"], [18, 9, "angolo tra <b>laterale B</b> e <b>fondo 2</b>"],
+  [12, 9, "<b>laterale B</b>: linea dei 3 m della meta' del fondo 2"], [9, 9, "<b>laterale B</b>: a terra sotto la rete"],
+  [6, 9, "<b>laterale B</b>: linea dei 3 m della meta' del fondo 1"], [0, 9, "angolo tra <b>laterale B</b> e <b>fondo 1</b>"]];
+var GRID = false, CAL = null, courtCache = { key: "", H: null, err: 0 };
+try { GRID = localStorage.getItem("volleycut:grid") === "1"; } catch (e) { /* spenta */ }
+// omografia (h33 = 1) dai punti src -> dst con i minimi quadrati
+function homography(src, dst) {
+  const A = [], b = [];
+  src.forEach(([x, y], i) => { const [u, w] = dst[i];
+    A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u);
+    A.push([0, 0, 0, x, y, 1, -w * x, -w * y]); b.push(w); });
+  const N = Array.from({ length: 8 }, (_, r) => Array.from({ length: 9 }, (_, c) => 0));
+  A.forEach((row, k) => { for (let r = 0; r < 8; r++) { for (let c = 0; c < 8; c++) N[r][c] += row[r] * row[c]; N[r][8] += row[r] * b[k]; } });
+  for (let c = 0; c < 8; c++) {
+    let p = c; for (let r = c + 1; r < 8; r++) if (Math.abs(N[r][c]) > Math.abs(N[p][c])) p = r;
+    if (Math.abs(N[p][c]) < 1e-12) return null;
+    [N[c], N[p]] = [N[p], N[c]];
+    for (let r = 0; r < 8; r++) if (r !== c) { const f = N[r][c] / N[c][c]; for (let k = c; k < 9; k++) N[r][k] -= f * N[c][k]; }
+  }
+  const h = N.map((row, r) => row[8] / row[r]);
+  return [[h[0], h[1], h[2]], [h[3], h[4], h[5]], [h[6], h[7], 1]];
+}
+const hApply = (H, x, y) => { const w = H[2][0] * x + H[2][1] * y + H[2][2]; return w > 1e-9 ? [(H[0][0] * x + H[0][1] * y + H[0][2]) / w, (H[1][0] * x + H[1][1] * y + H[1][2]) / w] : null; };
+const courtValid = p => { const k = Object.keys(p).map(Number); return k.length >= 4 && k.filter(i => i < 5).length >= 2 && k.filter(i => i >= 5).length >= 2; };
+function courtH(p) {
+  if (!p || !courtValid(p)) return null;
+  const key = JSON.stringify(p);
+  if (courtCache.key !== key) {
+    const ks = Object.keys(p).map(Number), H = homography(ks.map(i => CPTS[i].slice(0, 2)), ks.map(i => p[i]));
+    let err = 0; if (H) ks.forEach(i => { const q = hApply(H, CPTS[i][0], CPTS[i][1]); if (q) err = Math.max(err, Math.hypot(q[0] - p[i][0], q[1] - p[i][1])); });
+    courtCache = { key, H, err };
+  }
+  return courtCache.H;
+}
+// pixel del video -> punto della tela (segue lo zoom: stesso fattore in larghezza e altezza)
+function vidToScreen(px, py) {
+  const r = zoomRect(), fx = px / v.videoWidth, fy = py / v.videoHeight;
+  if (Z.s <= 1) return [r.ox + fx * r.cw, r.oy + fy * r.ch];
+  const hw = 0.5 / Z.s;
+  return [r.ox + (fx - (Z.cx - hw)) * Z.s * r.cw, r.oy + (fy - (Z.cy - hw)) * Z.s * r.ch];
+}
+function gridDraw() {
+  const c = $("vgc"), pts = CAL ? CAL.p : D.court && D.court.p, H = courtH(pts);
+  const show = !!v.videoWidth && (CAL || (GRID && H));
+  c.classList.toggle("on", !!show); $("vgon").classList.toggle("pri", GRID && !!H);
+  if (!show) return;
+  const w = v.clientWidth, h = v.clientHeight, d = devicePixelRatio || 1;
+  c.style.left = v.offsetLeft + "px"; c.style.top = v.offsetTop + "px"; c.style.width = w + "px"; c.style.height = h + "px";
+  if (c.width !== Math.round(w * d) || c.height !== Math.round(h * d)) { c.width = Math.round(w * d); c.height = Math.round(h * d); }
+  const g = c.getContext("2d"); g.setTransform(d, 0, 0, d, 0, 0); g.clearRect(0, 0, w, h);
+  const r = zoomRect(); g.save(); g.beginPath(); g.rect(r.ox, r.oy, r.cw, Math.min(r.ch, h - (v.controls ? 48 : 0) - r.oy)); g.clip();
+  if (H) {
+    const S = (X, Y) => { const q = hApply(H, X, Y); return q ? vidToScreen(q[0], q[1]) : null; };
+    const line = (a, b, col, wd, dash) => { const p = S(...a), q = S(...b); if (!p || !q) return;
+      g.strokeStyle = col; g.lineWidth = wd; g.setLineDash(dash || []); g.beginPath(); g.moveTo(...p); g.lineTo(...q); g.stroke(); };
+    const thin = "rgba(255,225,77,.55)", main = "rgba(255,225,77,.95)";
+    [3, 15].forEach(X => line([X, 0], [X, 9], thin, 1, [6, 5]));
+    [3, 6].forEach(Y => line([0, Y], [18, Y], thin, 1, [6, 5]));
+    [0, 6, 12, 18].forEach(X => line([X, 0], [X, 9], main, 2));
+    [0, 9].forEach(Y => line([0, Y], [18, Y], main, 2));
+    line([9, -0.6], [9, 9.6], "rgba(255,255,255,.95)", 3);                // rete
+    // numeri delle zone: per ciascuna meta' si guarda la rete; la destra si ricava dal verso dell'immagine
+    // (la telecamera e' sopra il pavimento: l'immagine del campo non e' specchiata)
+    const o = S(9, 4.5), ax = S(10, 4.5), ay = S(9, 5.5);
+    if (o && ax && ay) {
+      const std = (ax[0] - o[0]) * (ay[1] - o[1]) - (ax[1] - o[1]) * (ay[0] - o[0]) < 0;
+      const ZN = [[4, 3, 2], [7, 8, 9], [5, 6, 1]];
+      for (const far of [false, true]) for (let ri = 0; ri < 3; ri++) for (let ci = 0; ci < 3; ci++) {
+        const dep = 1.5 + 3 * ri, lat = 1.5 + 3 * ci;                     // lat: da sinistra a destra di chi guarda la rete
+        const X = far ? 9 + dep : 9 - dep, Y = far === std ? lat : 9 - lat;
+        const p = S(X, Y), p2 = S(X + 1, Y); if (!p || !p2) continue;
+        const fs = clamp(Math.hypot(p2[0] - p[0], p2[1] - p[1]) * 0.9, 10, 42);
+        g.setLineDash([]); g.font = "bold " + Math.round(fs) + "px system-ui,sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+        g.lineWidth = 3; g.strokeStyle = "rgba(0,0,0,.75)"; g.strokeText(ZN[ri][ci], p[0], p[1]);
+        g.fillStyle = "#fff"; g.fillText(ZN[ri][ci], p[0], p[1]);
+      }
+    }
+  }
+  if (CAL) {
+    g.setLineDash([]); g.font = "bold 13px system-ui,sans-serif"; g.textAlign = "left"; g.textBaseline = "bottom";
+    Object.keys(CAL.p).forEach(i => { const q = vidToScreen(...CAL.p[i]);
+      g.fillStyle = "#ff3b30"; g.beginPath(); g.arc(q[0], q[1], 5, 0, 7); g.fill();
+      g.lineWidth = 3; g.strokeStyle = "#000"; g.strokeText(+i + 1, q[0] + 6, q[1] - 4); g.fillStyle = "#fff"; g.fillText(+i + 1, q[0] + 6, q[1] - 4); });
+  }
+  g.restore();
+}
+function gridToggle() {
+  if (!(D.court && courtH(D.court.p))) { calStart(); return; }
+  GRID = !GRID; try { localStorage.setItem("volleycut:grid", GRID ? "1" : "0"); } catch (e) { /* niente */ }
+  gridDraw();
+}
+function calMsg() {
+  const H = courtH(CAL.p);
+  $("vcalmsg").innerHTML = CAL.i < CPTS.length
+    ? "Punto " + (CAL.i + 1) + " di " + CPTS.length + ": clicca a terra sull'" + CPTS[CAL.i][2] + ". " +
+      (CAL.i === 0 ? "<br>Laterale A e fondo 1 li scegli tu (di solito la laterale e il fondo piu' vicini alla telecamera); poi si gira intorno al campo. Rotella e trascinamento per lo zoom. " : "")
+    : "Punti finiti. ";
+  $("vcalmsg").innerHTML += H ? "<br>Griglia calcolata: scarto massimo " + Math.round(courtCache.err) + " px" + (courtCache.err > 12 ? " (alto: controlla i punti)" : "") + "." : "";
+  $("vcalok").disabled = !courtValid(CAL.p);
+}
+function calStart() {
+  if (!v.videoWidth) { alert("Carica prima il video."); return; }
+  v.pause(); CAL = { i: 0, p: {} }; $("vcal").hidden = false; calMsg(); gridDraw();
+}
+function calClick(q) {
+  if (CAL.i >= CPTS.length) return;
+  const hw = 0.5 / Z.s, fx = Z.s > 1 ? Z.cx - hw + q.fx / Z.s : q.fx, fy = Z.s > 1 ? Z.cy - hw + q.fy / Z.s : q.fy;
+  CAL.p[CAL.i] = [Math.round(fx * v.videoWidth * 10) / 10, Math.round(fy * v.videoHeight * 10) / 10];
+  CAL.i++; calMsg(); gridDraw();
+}
+function calEnd(ok) {
+  if (ok) {
+    if (!courtValid(CAL.p)) { alert("Servono almeno 4 punti, almeno 2 su ciascuna laterale."); return; }
+    D.court = { v: 1, p: CAL.p, w: v.videoWidth, h: v.videoHeight }; GRID = true;
+    try { localStorage.setItem("volleycut:grid", "1"); } catch (e) { /* niente */ }
+    store.save(); markDirty(true);
+  }
+  CAL = null; $("vcal").hidden = true; gridDraw();
+}
+$("vgon").onclick = gridToggle;
+$("vgset").onclick = () => (CAL ? calEnd(false) : calStart());
+$("vcalskip").onclick = () => { if (CAL.i < CPTS.length) { delete CAL.p[CAL.i]; CAL.i++; calMsg(); gridDraw(); } };
+$("vcalback").onclick = () => { if (CAL.i > 0) { CAL.i--; delete CAL.p[CAL.i]; calMsg(); gridDraw(); } };
+$("vcalok").onclick = () => calEnd(true);
+$("vcalno").onclick = () => calEnd(false);
+window.addEventListener("resize", gridDraw);
 
 // ---- fotogramma attuale come immagine (JPEG, risoluzione originale del video)
 async function snapFrame() {
@@ -3408,7 +3552,7 @@ function setSv(on) {
   if (on && cine) setCine(false);
   svOn = on; document.body.classList.toggle("svon", on); $("sv").hidden = !on;
   (on ? $("svid") : $("vbox")).prepend(v);
-  v.after($("vzc"), $("vzoom"));
+  v.after($("vzc"), $("vgc"), $("vzoom"), $("vgbar"), $("vcal"));
   v.controls = true; C = null;
   if (on) { svRender(); if (LR && LR.phase === "setup") openSetDlg(); }
   else { fltFor = null; changed(); }
@@ -3730,6 +3874,7 @@ $("lsanok").onclick = () => {
 };
 
 document.addEventListener("keydown", e => {
+  if (CAL && e.key === "Escape") { e.preventDefault(); calEnd(false); return; }
   if (svKey(e)) return;
   if ($("zdlg").open) return;
   if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && document.activeElement.type !== "checkbox") return;
@@ -3739,6 +3884,7 @@ document.addEventListener("keydown", e => {
   if ((e.ctrlKey || e.metaKey) && k === "s") { e.preventDefault(); saveFile(false); }
   else if (k === "f" && !e.ctrlKey && !e.metaKey) snapFrame();
   else if (k === "z" && !e.ctrlKey && !e.metaKey) zoomTo(1, 0.5, 0.5);
+  else if (k === "g" && !e.ctrlKey && !e.metaKey) gridToggle();
   else if (k === " ") { e.preventDefault(); v.paused ? v.play() : v.pause(); }
   else if (k === "," || (e.altKey && k === "arrowleft")) { e.preventDefault(); stepFrame(-1); }
   else if (k === "." || (e.altKey && k === "arrowright")) { e.preventDefault(); stepFrame(1); }
@@ -3772,6 +3918,7 @@ window.addEventListener("resize", draw);
 if (sorted().length) { const w = v1 - v0; v0 = clamp(R[0].start - 30, 0, Math.max(0, DUR - w)); v1 = v0 + w; seek(R[0].start); }
 restoreScout(store.loadScout());
 LIVE = D.empty ? null : store.loadLive(); liveRefresh();
+if (!D.empty && saved && saved.length && !D.court) D.court = store.loadCourt();     // campo segnato e non ancora salvato su file
 renderRows(); stats(); draw(); markDirty(!!(saved && saved.length)); requestAnimationFrame(tick);
 </script>
 </body>

@@ -136,6 +136,18 @@ body.svon #top,body.svon #list{display:none}
 #svcourt .trk{stroke:var(--whi);stroke-width:4;fill:none;pointer-events:none}
 #svcourt .trk.old{stroke:var(--mut);stroke-width:2.5;opacity:.7}
 #svcourt .tpt{fill:var(--whi);pointer-events:none}
+#lepmr[hidden]{display:none}
+#lecourt{width:100%;max-width:560px;height:auto;display:block;user-select:none;touch-action:none;cursor:crosshair;margin:4px 0}
+#lecourt .cbg{fill:var(--bg)}
+#lecourt .cfl{fill:color-mix(in srgb,var(--ok) 9%,var(--card));stroke:var(--fg);stroke-width:2}
+#lecourt .cours{fill:color-mix(in srgb,var(--acc) 12%,transparent)}
+#lecourt .cln{stroke:var(--fg);stroke-width:1.5;opacity:.75;stroke-dasharray:7 6}
+#lecourt .cnet{stroke:var(--fg);stroke-width:5}
+#lecourt .czn{fill:var(--mut);font-size:24px;opacity:.45;text-anchor:middle;pointer-events:none}
+#lecourt .clab{fill:var(--mut);font-size:17px;pointer-events:none}
+#lecourt .trk{stroke:var(--acc);stroke-width:4;fill:none;pointer-events:none}
+#lecourt .tp0{fill:var(--ok);stroke:var(--card);stroke-width:2;pointer-events:none}
+#lecourt .tp1{fill:var(--bad);stroke:var(--card);stroke-width:2;pointer-events:none}
 #svcomp{font:15px/1.5 Consolas,monospace;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-height:3.2em}
 #svcomp .h{font:12px/1.4 system-ui,Segoe UI,sans-serif;color:var(--mut)}
 .vg{border-collapse:collapse;margin:2px 0}.vg td,.vg th{padding:2px;border:0;text-align:center;white-space:nowrap}
@@ -3202,7 +3214,8 @@ function openEvDlg(i) {
       '<div class="row" id="lebtr"><label>Tipo di battuta <select id="lebt">' + optList(BTO.map(b => [b, BTN[b]]), e.bt || "H") + "</select></label></div>" +
       '<div class="row" id="letrr"><label>Partenza <select id="lez0">' + optList(ZOPT, e.z0) + "</select></label>" +
       '<label>Arrivo <select id="lez1">' + optList(ZOPT, e.z1) + "</select></label>" +
-      '<label id="lepmr"><input type="checkbox" id="lepm"' + (e.pm ? " checked" : "") + "> murato nella traccia</label></div>";
+      '<label id="lepmr"><input type="checkbox" id="lepm"' + (e.pm ? " checked" : "") + "> murato nella traccia</label></div>" +
+      '<div id="lecr"><p class="mut" id="lechint"></p><svg id="lecourt" viewBox="0 0 700 400"></svg></div>';
   } else if (e.k === "g") {
     x = '<div class="row"><label>Squadra <select id="lewho">' + optList(who, e.who) + "</select></label>" +
       '<label>Tipo <select id="ler">' + optList([["=", "errore generico (ER)"], ["#", "punto generico (PT)"]], e.r) + "</select></label></div>";
@@ -3214,14 +3227,63 @@ function openEvDlg(i) {
   else if (e.k === "rot") x = '<div class="row"><label>Correzione <select id="led">' + optList([["1", "rotazione avanti"], ["-1", "rotazione indietro"]], e.d) + "</select></label></div>";
   else if (e.k === "set") x = '<p class="mut">Della riga d\'inizio set qui si cambia solo l\'istante. Per la formazione usa i cambi o la correzione della rotazione; per rifarla da capo elimina l\'inizio del set e reimpostalo.</p>';
   $("lebody").innerHTML = x;
-  if (e.k === "t") { $("les").onchange = leShow; leShow(); }
+  if (e.k === "t") {
+    LEC = { p0: null, p1: null, set0: false, set1: false, next: 0, down: null };
+    $("les").onchange = () => { Object.assign(LEC, { p0: null, p1: null, set0: false, set1: false, next: 0 }); leShow(); leCourt(); };
+    $("lez0").onchange = () => { LEC.set0 = false; LEC.p0 = null; leCourt(); };
+    $("lez1").onchange = () => { LEC.set1 = false; LEC.p1 = null; leCourt(); };
+    const c = $("lecourt");
+    c.onpointerdown = ev => { ev.preventDefault(); LEC.down = lePt(ev); };
+    c.onpointerup = ev => {
+      if (!LEC.down) return;
+      const p = lePt(ev), d = LEC.down; LEC.down = null;
+      if (Math.hypot(p[0] - d[0], (p[1] - d[1]) * 4 / 7) > 4) { leSetPt(0, d); leSetPt(1, p); LEC.next = 0; }   // trascinamento = partenza e arrivo
+      else { leSetPt(LEC.next, p); LEC.next = 1 - LEC.next; }
+      leCourt();
+    };
+    leShow(); leCourt();
+  }
   $("ledlg").showModal();
+}
+// campo cliccabile nella finestra: il clic mette il punto preciso e sceglie la zona (partenza, poi arrivo)
+let LEC = null;
+const lePt = ev => { const r = $("lecourt").getBoundingClientRect(); return [clamp((ev.clientX - r.left) / r.width * 100, 0, 100), clamp((ev.clientY - r.top) / r.height * 100, 0, 100)]; };
+// meta' attesa per la partenza: la nostra, ma in ricezione e' la battuta avversaria (meta' loro)
+const leHalf0 = () => { const l = evLeftAt(leIdx); return $("les").value === "R" ? !l : l; };
+function leSetPt(k, p) {
+  const want = k === 0 ? leHalf0() : !leHalf0();
+  if ((p[0] < 50) !== want) p = [100 - p[0], 100 - p[1]];          // meta' sbagliata: il punto simmetrico, stessa zona
+  p = [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10];
+  LEC["p" + k] = p; LEC["set" + k] = true;
+  $("lez" + k).value = String(LV.zoneAt(...p));
+}
+function leCourt() {
+  const c = $("lecourt"); if (!c || !LEC) return;
+  const e = LIVE.ev[leIdx], g = LV.GEO, left = evLeftAt(leIdx), h0 = leHalf0();
+  const L = (x1, y1, x2, y2, k) => '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" class="' + k + '"/>';
+  let s = '<rect x="0" y="0" width="700" height="400" class="cbg"/>' +
+    '<rect x="' + sx(g.end0) + '" y="' + sy(g.side0) + '" width="' + (sx(g.end1) - sx(g.end0)) + '" height="' + (sy(g.side1) - sy(g.side0)) + '" class="cfl"/>' +
+    '<rect x="' + (left ? sx(g.end0) : 350) + '" y="' + sy(g.side0) + '" width="' + (350 - sx(g.end0)) + '" height="' + (sy(g.side1) - sy(g.side0)) + '" class="cours"/>' +
+    L(sx(g.att0), sy(g.side0), sx(g.att0), sy(g.side1), "cln") + L(sx(g.att1), sy(g.side0), sx(g.att1), sy(g.side1), "cln") +
+    L(350, sy(g.side0) - 14, 350, sy(g.side1) + 14, "cnet");
+  for (const half of [true, false]) for (let z = 1; z <= 9; z++) { const q = LV.zoneCenter(z, half); s += '<text x="' + sx(q[0]) + '" y="' + (sy(q[1]) + 8) + '" class="czn">' + z + "</text>"; }
+  s += '<text x="' + (left ? 14 : 610) + '" y="26" class="clab">noi</text><text x="' + (left ? 610 : 14) + '" y="26" class="clab">' + esc((LIVE && LIVE.them) || "loro") + "</text>";
+  // punti: cliccati, oppure quelli salvati se la zona non e' cambiata, oppure il centro della zona scelta nel menu
+  const z0 = $("lez0").value, z1 = $("lez1").value, R = $("les").value === "R";
+  const p0 = LEC.p0 || (e.p0 && z0 === (e.z0 || "") ? e.p0 : z0 ? LV.zoneCenter(+z0, h0, $("les").value === "S" || R) : null);
+  const p1 = LEC.p1 || (e.p1 && z1 === (e.z1 || "") ? e.p1 : z1 ? LV.zoneCenter(+z1, !h0) : null);
+  if (p0 && p1) s += '<line x1="' + sx(p0[0]) + '" y1="' + sy(p0[1]) + '" x2="' + sx(p1[0]) + '" y2="' + sy(p1[1]) + '" class="trk"/>';
+  if (p0) s += '<circle cx="' + sx(p0[0]) + '" cy="' + sy(p0[1]) + '" r="9" class="tp0"/>';
+  if (p1) s += '<circle cx="' + sx(p1[0]) + '" cy="' + sy(p1[1]) + '" r="9" class="tp1"/>';
+  c.innerHTML = s;
+  $("lechint").textContent = "Clic sul campo: " + (LEC.next ? "ora l'ARRIVO (punto rosso)" : "la PARTENZA (punto verde)") + "; trascinando metti partenza e arrivo insieme.";
 }
 function leShow() {
   const s = $("les").value;
   $("lebtr").hidden = !(s === "S" || s === "R");
   $("letrr").hidden = !(TRACK(s) || s === "R");
   $("lepmr").hidden = !(s === "A" || s === "P");
+  if ($("lecr")) $("lecr").hidden = $("letrr").hidden;
 }
 $("letnow").onclick = () => { $("let").value = Math.round(v.currentTime * 100) / 100; $("letf").textContent = fmt(v.currentTime); };
 $("let").oninput = () => { $("letf").textContent = fmt(+$("let").value || 0); };
@@ -3249,6 +3311,16 @@ $("leok").onclick = () => {
       else delete e.pm;
       if (!(e.s === "A" || e.s === "P")) delete e.pm;
       if (!e.p0) { delete e.p1; delete e.z1; delete e.pm; }
+    }
+    if ((TRACK(e.s) || e.s === "R") && LEC && (LEC.set0 || LEC.set1)) {        // punti cliccati sul campo della finestra
+      const left = evLeftAt(leIdx);
+      if (LEC.set0) { e.p0 = LEC.p0; e.z0 = String(LV.zoneAt(...LEC.p0)); }
+      if (LEC.set1) { e.p1 = LEC.p1; e.z1 = String(LV.zoneAt(...LEC.p1)); }
+      if (e.s !== "R") {
+        if (!e.p0 && e.z0) e.p0 = LV.zoneCenter(e.z0, left, e.s === "S");
+        if (!e.p1 && e.z1 && e.p0) e.p1 = LV.zoneCenter(e.z1, !left);
+        if ((e.s === "A" || e.s === "P") && $("lepm").checked && e.p0 && e.p1) e.pm = [left ? 51 : 49, Math.round((e.p0[1] + e.p1[1]) / 2)];
+      }
     }
   } else if (e.k === "g") { e.who = $("lewho").value; e.r = $("ler").value; }
   else if (e.k === "to") e.who = $("lewho").value;

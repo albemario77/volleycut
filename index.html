@@ -3162,9 +3162,27 @@ function insBefore(i) {
   liveChanged();
 }
 function insEnd() { INS = null; C = null; liveChanged(); }
+// spostando un tocco, gli eventi che seguono con istante stimato (fino al primo tocco gia' timbrato) si spostano
+// della stessa quantita': uno scout convertito da VS sfasato si riallinea con un solo tocco
+function shiftEst(i, d) {
+  if (!d || !LIVE.ev[i] || LIVE.ev[i].k !== "t") return 0;
+  let n = 0;
+  for (let j = i + 1; j < LIVE.ev.length; j++) {
+    const e = LIVE.ev[j];
+    if (e.k === "t" && !e.est) break;
+    e.t = Math.max(0, Math.round((e.t + d) * 100) / 100);
+    if (e.k === "t") n++;
+  }
+  return n;
+}
+const shiftNote = (n, d) => n ? "Spostati di " + (d > 0 ? "+" : "") + d.toFixed(2).replace(".", ",") + " s anche " + n + (n === 1 ? " tocco successivo" : " tocchi successivi") + " con istante stimato." : "";
 function evMove(i, t) {
   const e = LIVE.ev[i]; if (!e) return;
-  e.t = Math.max(0, Math.round(t * 100) / 100); seek(e.t); v.pause(); liveChanged();
+  const t0 = e.t;
+  e.t = Math.max(0, Math.round(t * 100) / 100);
+  const d = Math.round((e.t - t0) * 100) / 100, n = shiftEst(i, d);
+  delete e.est; svNote = shiftNote(n, d);
+  seek(e.t); v.pause(); liveChanged();
 }
 const evLeftAt = i => { let left = true; for (const e of LIVE.ev.slice(0, i + 1)) { if (e.k === "set") left = e.left !== false; else if (e.k === "side") left = !left; } return left; };
 const optList = (pairs, cur) => pairs.map(([v, l]) => '<option value="' + esc(String(v)) + '"' + (String(v) === String(cur ?? "") ? " selected" : "") + ">" + esc(l) + "</option>").join("");
@@ -3238,6 +3256,7 @@ $("leok").onclick = () => {
   else if (e.k === "sub") { e.out = +$("leout").value; e.in = +$("lein").value; if (e.out === e.in) { $("leerr").textContent = "Chi esce e chi entra sono la stessa giocatrice."; return; } }
   else if (e.k === "san") { e.who = $("lewho").value; e.kind = $("lekind").value; if (e.who === "noi") e.n = +$("lesn").value || null; else delete e.n; }
   else if (e.k === "rot") e.d = +$("led").value;
+  if (e.t !== e0.t) { delete e.est; const d = Math.round((e.t - e0.t) * 100) / 100; svNote = shiftNote(shiftEst(leIdx, d), d); }
   LIVE.ev[leIdx] = e; $("ledlg").close(); SEL = leIdx; seek(e.t); v.pause(); liveChanged();
 };
 function afterPoint(e) {
@@ -3515,7 +3534,7 @@ function svLast() {
       (p ? '<span class="sc ' + (p.won ? "w" : "l") + '" title="' + (p.won ? "punto nostro" : "punto avversario") + '">' + p.s + "</span>" : "") +
       '<button class="sm" data-d="-1" title="Anticipa di 0,1 s">&minus;0,1</button><button class="sm" data-d="1" title="Ritarda di 0,1 s">+0,1</button></div>';
     if (on) h += '<div class="acts"><button class="sm" data-a="edit" title="' + (e.k === "set" ? "Formazione, palleggiatrice, libero, chi batte, lato del campo" : "Giocatrice, fondamentale, voto, traccia, squadra...") + '">Modifica&hellip;</button>' +
-      '<button class="sm" data-a="now" title="L\'evento prende l\'istante a cui e\' fermo il video">All\'istante del video</button>' +
+      '<button class="sm" data-a="now" title="L\'evento prende l\'istante a cui e\' fermo il video; i tocchi seguenti con istante stimato si spostano della stessa quantita\', fino al primo gia\' timbrato">All\'istante del video</button>' +
       '<button class="sm" data-a="ins" title="I prossimi tocchi si inseriscono prima di questo evento">Inserisci prima</button>' +
       '<button class="sm" data-a="del" title="Elimina (tasto Canc)">Elimina <kbd>Canc</kbd></button>' +
       (e.k === "t" ? '<button class="sm" data-a="tags" title="Annotazioni sul tocco, per vedere se si ripetono">Etichette&hellip;</button>' : "") +

@@ -3250,12 +3250,14 @@ let LEC = null;
 const lePt = ev => { const r = $("lecourt").getBoundingClientRect(); return [clamp((ev.clientX - r.left) / r.width * 100, 0, 100), clamp((ev.clientY - r.top) / r.height * 100, 0, 100)]; };
 // meta' attesa per la partenza: la nostra, ma in ricezione e' la battuta avversaria (meta' loro)
 const leHalf0 = () => { const l = evLeftAt(leIdx); return $("les").value === "R" ? !l : l; };
+// il punto resta dove si clicca; la zona c'e' solo se il punto e' nella meta' attesa (battuta in rete, palla rimasta
+// nel proprio campo: nessuna zona)
 function leSetPt(k, p) {
   const want = k === 0 ? leHalf0() : !leHalf0();
-  if ((p[0] < 50) !== want) p = [100 - p[0], 100 - p[1]];          // meta' sbagliata: il punto simmetrico, stessa zona
   p = [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10];
-  LEC["p" + k] = p; LEC["set" + k] = true;
-  $("lez" + k).value = String(LV.zoneAt(...p));
+  const z = (p[0] < 50) === want && Math.abs(p[0] - 50) > 1 ? String(LV.zoneAt(...p)) : "";
+  LEC["p" + k] = p; LEC["z" + k] = z; LEC["set" + k] = true;
+  $("lez" + k).value = z;
 }
 function leCourt() {
   const c = $("lecourt"); if (!c || !LEC) return;
@@ -3276,7 +3278,7 @@ function leCourt() {
   if (p0) s += '<circle cx="' + sx(p0[0]) + '" cy="' + sy(p0[1]) + '" r="9" class="tp0"/>';
   if (p1) s += '<circle cx="' + sx(p1[0]) + '" cy="' + sy(p1[1]) + '" r="9" class="tp1"/>';
   c.innerHTML = s;
-  $("lechint").textContent = "Clic sul campo: " + (LEC.next ? "ora l'ARRIVO (punto rosso)" : "la PARTENZA (punto verde)") + "; trascinando metti partenza e arrivo insieme.";
+  $("lechint").textContent = "Clic sul campo: " + (LEC.next ? "ora l'ARRIVO (punto rosso)" : "la PARTENZA (punto verde)") + "; trascinando metti partenza e arrivo insieme. Il punto resta dove clicchi; in rete o nel proprio campo la zona resta vuota.";
 }
 function leShow() {
   const s = $("les").value;
@@ -3314,8 +3316,8 @@ $("leok").onclick = () => {
     }
     if ((TRACK(e.s) || e.s === "R") && LEC && (LEC.set0 || LEC.set1)) {        // punti cliccati sul campo della finestra
       const left = evLeftAt(leIdx);
-      if (LEC.set0) { e.p0 = LEC.p0; e.z0 = String(LV.zoneAt(...LEC.p0)); }
-      if (LEC.set1) { e.p1 = LEC.p1; e.z1 = String(LV.zoneAt(...LEC.p1)); }
+      if (LEC.set0) { e.p0 = LEC.p0; if (LEC.z0) e.z0 = LEC.z0; else delete e.z0; }
+      if (LEC.set1) { e.p1 = LEC.p1; if (LEC.z1) e.z1 = LEC.z1; else delete e.z1; }
       if (e.s !== "R") {
         if (!e.p0 && e.z0) e.p0 = LV.zoneCenter(e.z0, left, e.s === "S");
         if (!e.p1 && e.z1 && e.p0) e.p1 = LV.zoneCenter(e.z1, !left);

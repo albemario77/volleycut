@@ -187,6 +187,7 @@ button.on{outline:2px solid var(--acc)}
         <code>lavoro/proxy.mp4</code> (stessi tempi, molto piu' leggera).</span></div>
       <div class="row">
         <label title="Con un filtro scout attivo si riproducono comunque solo le clip filtrate"><input type="checkbox" id="preview"> Anteprima senza tagli (salta i tempi morti)</label>
+        <label>Velocit&agrave; <select id="rspeed"><option value="0.25">0,25x</option><option value="0.5">0,5x</option><option value="0.75">0,75x</option><option value="1" selected>1x</option><option value="1.5">1,5x</option><option value="2">2x</option></select></label>
       </div>
       <div class="row" id="zoomrow">Zoom video
         <button id="zout" title="Riduci">&minus;</button><button id="zin" title="Ingrandisci">+</button><button id="zreset" title="Immagine intera (Z)">1:1</button>
@@ -295,7 +296,7 @@ button.on{outline:2px solid var(--acc)}
         <button id="cfnext" title="Fotogramma successivo (punto o Alt+freccia destra)">|&#9654;</button>
         <button id="ctch" hidden>Tocchi</button>
         <button id="csnap"title="Salva come immagine il fotogramma attuale (F)">Foto</button>
-        <select id="cspeed"><option value="0.25">0,25x</option><option value="0.5">0,5x</option><option value="1" selected>1x</option><option value="1.5">1,5x</option><option value="2">2x</option></select>
+        <select id="cspeed"><option value="0.25">0,25x</option><option value="0.5">0,5x</option><option value="0.75">0,75x</option><option value="1" selected>1x</option><option value="1.5">1,5x</option><option value="2">2x</option></select>
         <label><input type="checkbox" id="cauto" checked> avanti automatico</label>
         <button id="cfs">Schermo intero</button>
         <button id="cback">Torna alla revisione</button>
@@ -323,7 +324,7 @@ button.on{outline:2px solid var(--acc)}
       <button id="svf1" title="Avanti di 1 s (maiusc+freccia destra)">+1 s</button>
       <button id="svfp" title="Fotogramma precedente (virgola)">&#9664;|</button>
       <button id="svfn" title="Fotogramma successivo (punto)">|&#9654;</button>
-      <select id="svspeed" title="Velocita'"><option value="0.25">0,25x</option><option value="0.5">0,5x</option><option value="0.75">0,75x</option><option value="1" selected>1x</option><option value="1.5">1,5x</option></select>
+      <select id="svspeed" title="Velocita'"><option value="0.25">0,25x</option><option value="0.5">0,5x</option><option value="0.75">0,75x</option><option value="1" selected>1x</option><option value="1.5">1,5x</option><option value="2">2x</option></select>
       <span id="svtime" class="mut"></span>
       <label title="A fine punto il video salta all'inizio della clip successiva con Tieni"><input type="checkbox" id="svjump" checked> a fine punto vai alla clip successiva</label>
     </div>
@@ -2081,6 +2082,14 @@ v.addEventListener("click", () => { if (cine) $("cplay").click(); });
 $("cseek").oninput = e => { if (sel) { scrubbing = true; seek(sel.start + e.target.value / 1000 * (sel.end - sel.start)); } };
 $("cseek").onchange = () => { scrubbing = false; };
 $("cspeed").onchange = e => { v.playbackRate = +e.target.value; };
+$("rspeed").onchange = e => { v.playbackRate = +e.target.value; };
+// i selettori di velocita' delle tre viste (revisione, cinema, scout) mostrano sempre quella attuale del video
+v.addEventListener("ratechange", () => {
+  for (const id of ["rspeed", "cspeed", "svspeed"]) {
+    const el = $(id), r = v.playbackRate;
+    if (el && el.querySelector('option[value="' + r + '"]')) el.value = String(r);
+  }
+});
 $("cfs").onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else $("cine").requestFullscreen(); };
 $("ctag").onchange = e => { if (sel) { sel.tag = e.target.value.trim(); touch(sel); changed(false); renderCine(); } };
 $("ckeep").onchange = e => { if (sel) { sel.keep = e.target.checked; touch(sel); changed(); } };
